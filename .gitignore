@@ -53,3 +53,7 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+#STM32
+Src/STM32L476RG/Smart-Meter-TPP/.vscode
+Src/STM32L476RG/Smart-Meter-TPP/build
