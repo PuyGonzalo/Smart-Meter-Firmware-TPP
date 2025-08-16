@@ -57,3 +57,5 @@ dkms.conf
 #STM32
 Src/STM32L476RG/Smart-Meter-TPP/.vscode
 Src/STM32L476RG/Smart-Meter-TPP/build
+Src/STM32L031K6T6/Smart-Meter-FW-TPP/.vscode
+Src/STM32L031K6T6/Smart-Meter-FW-TPP/build

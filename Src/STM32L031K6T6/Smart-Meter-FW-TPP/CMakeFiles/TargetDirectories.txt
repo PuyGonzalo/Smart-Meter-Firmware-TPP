@@ -1,0 +1,6 @@
+/home/gonzalop/Documentos/TPP/Smart-Meter-Firmware-TPP/Src/STM32L031K6T6/Smart-Meter-FW-TPP/CMakeFiles/Smart-Meter-FW-TPP.dir
+/home/gonzalop/Documentos/TPP/Smart-Meter-Firmware-TPP/Src/STM32L031K6T6/Smart-Meter-FW-TPP/CMakeFiles/edit_cache.dir
+/home/gonzalop/Documentos/TPP/Smart-Meter-Firmware-TPP/Src/STM32L031K6T6/Smart-Meter-FW-TPP/CMakeFiles/rebuild_cache.dir
+/home/gonzalop/Documentos/TPP/Smart-Meter-Firmware-TPP/Src/STM32L031K6T6/Smart-Meter-FW-TPP/cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir
+/home/gonzalop/Documentos/TPP/Smart-Meter-Firmware-TPP/Src/STM32L031K6T6/Smart-Meter-FW-TPP/cmake/stm32cubemx/CMakeFiles/edit_cache.dir
+/home/gonzalop/Documentos/TPP/Smart-Meter-Firmware-TPP/Src/STM32L031K6T6/Smart-Meter-FW-TPP/cmake/stm32cubemx/CMakeFiles/rebuild_cache.dir
