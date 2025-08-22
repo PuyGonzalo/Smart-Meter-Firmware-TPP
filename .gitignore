@@ -57,3 +57,5 @@ dkms.conf
 #STM32
 SM_Project/.vscode
 SM_Project/build
+Doc/html
+Doc/latex
