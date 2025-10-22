@@ -18,12 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdio.h>
-#include <string.h>
+#include "dma.h"
 #include "i2c.h"
-#include "stm32l0xx_hal.h"
-#include "stm32l0xx_hal_def.h"
-#include "stm32l0xx_hal_uart.h"
 #include "usart.h"
 #include "rtc.h"
 #include "gpio.h"
@@ -33,6 +29,8 @@
 #include "at_core.h"
 #include "delay.h"
 #include "printf_retarget.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,25 +51,51 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+  /*Pequeña pruebita*/
+  int32_t at_command_delay;
+  extern UART_HandleTypeDef huart2;
+  volatile uint8_t rx_bytes_count = 0;
+  char rx_buffer[128] = {0};
+  volatile uint8_t rx_index = 0;
+  bool response_complete = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  if(huart->Instance == USART2) {
+    // response_complete = true;
+    rx_index++;
+    
+    /**CHECK FOR COMPLETE AT RESPONSE**/
+    // if(rx_buffer[rx_index-1] == '\r' && rx_index > 0) {
+    //   // Look for OK or ERROR at end
+    //   if(rx_buffer[0] == '\0'){
+    //     rx_buffer[0] = 10;
+    //   }
+    //   char *result1;
+    //   char *result2;
+    //   result1 = strstr(rx_buffer, "\r\nOK\r\n");
+    //   result2 = strstr(rx_buffer, "\r\nERROR\r\n");
+    //   if(result1 != NULL || result2 != NULL) {
+    //     response_complete = true;
+    //   }
+    // }
+    
+    /**CRITICAL: RESTART FOR NEXT BYTE**/
+    if(rx_index < sizeof(rx_buffer) - 1) {
+      HAL_UART_Receive_DMA(&huart2, (uint8_t*)&rx_buffer[rx_index], 1);
+    }
+  }
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/*Pequeña pruebita*/
-int32_t at_command_delay;
-extern UART_HandleTypeDef huart2;
-volatile uint8_t rx_bytes_count = 0;
-char rx_buffer[128] = {0};
-uint8_t rx_index = 0;
-bool response_complete = false;
+
 /* USER CODE END 0 */
 
 /**
@@ -103,6 +127,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_RTC_Init();
   MX_USART2_UART_Init();
@@ -116,25 +141,18 @@ int main(void)
   
   /*Creo delay para comandos at*/
   at_command_delay = delay_timer_create();
-  //printf("Delay id: %d\r\n", at_command_delay);
   atcmd_desc_t at_test = {
     .at_cmd_size = 4,
     .cmd_mode = 0,
     .id = CMD_AT,
   };
-  // extern volatile uint32_t rx_total_count;
-  HAL_UART_Receive_IT(&huart2, (uint8_t*)rx_buffer, 32);
   UNUSED(at_test);
-  DEBUG_PRINTF("Envio comando AT");
-  char at_cmd[] = "AT\r\n";
-  HAL_UART_Transmit(&huart2, (uint8_t*)at_cmd, strlen(at_cmd),1000);
+  char at_cmd[] = "AT+IPR?\r\n";
 
-  if(HAL_UART_Receive(&huart2, (uint8_t*)rx_buffer, 9,HAL_MAX_DELAY) != HAL_OK){
-    printf("HAL no OK\r\n");
-  }
-
-  
-
+  DEBUG_PRINTF("Envio comando AT POSTA");
+  HAL_UART_Receive_DMA(&huart2, (uint8_t*)rx_buffer, 1);
+  HAL_UART_Transmit(&huart2, (uint8_t*)at_cmd, strlen(at_cmd),1);
+  delay_start(at_command_delay, 300);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -144,11 +162,19 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if(response_complete){
+
+    if(delay_has_finished(at_command_delay)){
       DEBUG_PRINTF("Llego la navidad JIJOOO \r\n");
-      response_complete = false;
+      if(rx_buffer[0] == '\0'){
+        rx_buffer[0] = 10;
+      }
+      char *result;
+      result = strstr(rx_buffer, "\r\nOK\r\n");
+      if(result != NULL){
+        printf("Agarrate las tetas bebeto\r\n");
+      }
     }
-  }
+  } 
   /* USER CODE END 3 */
 }
 
@@ -169,11 +195,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_MSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
-  RCC_OscInitStruct.MSICalibrationValue = 0;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_5;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -184,7 +209,7 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
@@ -238,24 +263,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  // if(huart->Instance == USART2) {
-  //   rx_index++;
-    
-  //   // **CHECK FOR COMPLETE AT RESPONSE**
-  //   if(rx_buffer[rx_index-1] == '\n') {
-  //     // Look for OK or ERROR at end
-  //     if(strstr(rx_buffer, "OK\r\n") || strstr(rx_buffer, "ERROR\r\n")) {
-  //       response_complete = true;
-  //     }
-  //   }
-    
-  //   // **CRITICAL: RESTART FOR NEXT BYTE**
-  //   if(rx_index < sizeof(rx_buffer) - 1) {
-  //     HAL_UART_Receive_IT(&huart2, (uint8_t*)&rx_buffer[rx_index], 1);
-  //   }
-  // }
-  printf("llegue\r\n");
-}

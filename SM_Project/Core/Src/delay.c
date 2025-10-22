@@ -79,6 +79,7 @@ void delay_update(void) {
   for (uint32_t i = 0; i < num_timers; i++) {
     if (delay_timers[i].is_running && delay_timers[i].delay_counter > 0) {
       delay_timers[i].delay_counter--;
+      any_timer_running = true;
     } else if (delay_timers[i].delay_counter == 0) {
       delay_timers[i].is_running = false;
     }
