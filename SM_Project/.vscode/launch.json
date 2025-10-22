@@ -1,0 +1,88 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug w/ ST-Link",
+      "cwd": "${workspaceFolder}",
+      "type": "cortex-debug",
+      "executable": "${workspaceFolder}/build/Debug/Smart-Meter-FW-TPP.elf", // Change to your .elf executable
+      "request": "launch",
+      "servertype": "stlink",
+      "device": "STM32L031K6Tx", // Change based your MCU used
+      "interface": "swd",
+      // "serialNumber": "", // Set ST-Link ID if you use multiple at the same time
+      "runToEntryPoint": "main",
+      "svdFile": "/opt/st/stm32cubeclt_1.19.0/STMicroelectronics_CMSIS_SVD/STM32L0x1.svd", // Change based your MCU used
+      "v1": false, // Change it depending on ST Link version
+      "serverpath": "/opt/st/stm32cubeclt_1.19.0/STLink-gdb-server/bin/ST-LINK_gdbserver",
+      "stm32cubeprogrammer": "/opt/st/stm32cubeclt_1.19.0/STM32CubeProgrammer/bin",
+      "stlinkPath": "/opt/st/stm32cubeclt_1.19.0/STLink-gdb-server/bin/ST-LINK_gdbserver",
+      "armToolchainPath": "/opt/st/stm32cubeclt_1.19.0/GNU-tools-for-STM32/bin",
+      "gdbPath": "/opt/st/stm32cubeclt_1.19.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb",
+      "serverArgs": [
+        "-m",
+        "0",
+        "-r", "15",
+        "-t",
+        "-e",
+        "--frequency", "4000"
+      ],
+      "overrideLaunchCommands": [
+        "-target-download",
+        "monitor halt"
+      ],
+      "preLaunchTask": "Build + Flash"
+    },
+    {
+      "name": "Attach w/ ST-Link",
+      "cwd": "${workspaceFolder}",
+      "type": "cortex-debug",
+      "executable": "${workspaceFolder}/build/Debug/Smart-Meter-FW-TPP.elf", // Change to your .elf executable
+      // Let CMake extension decide executable: "${command:cmake.launchTargetPath}"
+      // Or fixed file path: "${workspaceFolder}/path/to/filename.elf"
+      "request": "attach",
+      "servertype": "stlink",
+      "device": "STM32L031K6Tx", // Change to your MCU used
+      "interface": "swd",
+      "serialNumber": "", // Set ST-Link ID if you use multiple at the same time
+      "runToEntryPoint": "main",
+      "svdFile": "/opt/st/stm32cubeclt_1.19.0/STMicroelectronics_CMSIS_SVD/STM32L0x1.svd", // Change based your MCU used
+      "v1": false, // Change it depending on ST Link version
+      "serverpath": "/opt/st/stm32cubeclt_1.19.0/STLink-gdb-server/bin/ST-LINK_gdbserver",
+      "stm32cubeprogrammer": "/opt/st/stm32cubeclt_1.19.0/STM32CubeProgrammer/bin",
+      "stlinkPath": "/opt/st/stm32cubeclt_1.19.0/STLink-gdb-server/bin/ST-LINK_gdbserver",
+      "armToolchainPath": "/opt/st/stm32cubeclt_1.19.0/GNU-tools-for-STM32/bin",
+      "gdbPath": "/opt/st/stm32cubeclt_1.19.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb",
+      "serverArgs": [
+        "-m",
+        "1",
+        "-r", "15",
+        "-t",
+        "-e",
+        "--frequency", "4000"
+      ],
+    },
+    {
+      "name": "OpenOCD",
+      "cwd": "${workspaceFolder}",
+      "type": "cortex-debug",
+      "executable": "${workspaceFolder}/build/Debug/Smart-Meter-FW-TPP.elf",
+      "request": "launch",
+      "servertype": "openocd",
+      "serverpath": "/home/gonzalop/st/stm32cubeide_1.13.2/plugins/com.st.stm32cube.ide.mcu.externaltools.openocd.linux64_2.4.100.202501161620/tools/bin/openocd",
+      "configFiles": [
+          "SM-FW-TPP.cfg"
+      ],
+      "serverArgs": [
+          "-s","/home/gonzalop/st/stm32cubeide_1.13.2/plugins/com.st.stm32cube.ide.mcu.debug.openocd_2.3.100.202501240831/resources/openocd/st_scripts",
+          "-s", "/home/gonzalop/st/stm32cubeide_1.13.2/plugins/com.st.stm32cube.ide.mpu.debug.openocd_2.2.0.202409171044/resources/openocd/st_scripts",
+          "-d3"
+
+      ],
+      "device": "STM32L031K6Tx",
+      "runToEntryPoint": "main",
+      "svdFile": "/opt/st/stm32cubeclt_1.19.0/STMicroelectronics_CMSIS_SVD/STM32L0x1.svd",
+      //"showDevDebugOutput": "raw"
+    }
+  ]
+}

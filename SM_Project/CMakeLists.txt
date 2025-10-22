@@ -45,11 +45,21 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    Core/appDrivers/Quectel/bg95.c
+    Core/Src/printf_retarget.c
+    Core/appDrivers/AT/at_core.c
+    Core/appDrivers/AT/at_net.c
+    Core/appDrivers/AT/at_parser.c
+    Core/Src/delay.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    Core/appDrivers/AT
+    Core/appDrivers/Quectel
+    Core/Modules/ATCom/
+    Core/Inc
 )
 
 # Add project symbols (macros)
