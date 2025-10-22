@@ -1,0 +1,41 @@
+file(REMOVE_RECURSE
+  "Smart-Meter-FW-TPP.map"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/delay.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/delay.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/gpio.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/gpio.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/i2c.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/i2c.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/main.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/main.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/printf_retarget.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/printf_retarget.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/rtc.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/rtc.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/stm32l0xx_hal_msp.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/stm32l0xx_hal_msp.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/stm32l0xx_it.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/stm32l0xx_it.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/syscalls.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/syscalls.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/sysmem.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/sysmem.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/usart.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/Src/usart.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/AT/at_core.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/AT/at_core.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/AT/at_net.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/AT/at_net.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/AT/at_parser.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/AT/at_parser.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/Quectel/bg95.c.obj"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/Core/appDrivers/Quectel/bg95.c.obj.d"
+  "CMakeFiles/Smart-Meter-FW-TPP.dir/startup_stm32l031xx.s.obj"
+  "Smart-Meter-FW-TPP.elf"
+  "Smart-Meter-FW-TPP.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang ASM C)
+  include(CMakeFiles/Smart-Meter-FW-TPP.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()
