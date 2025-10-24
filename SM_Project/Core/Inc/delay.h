@@ -1,3 +1,14 @@
+/**
+ * @file delay.h
+ * @author your name (you@domain.com)
+ * @brief 
+ * @version 0.1
+ * @date 2025-10-24
+ * 
+ * @copyright Copyright (c) 2025
+ * 
+ */
+
 #ifndef DELAY_H
 #define DELAY_H
 
@@ -8,6 +19,10 @@
 
 #define MAX_TIMERS 5
 
+/**
+ * @brief 
+ * 
+ */
 typedef struct {
   volatile uint32_t delay_counter;
   bool is_running;

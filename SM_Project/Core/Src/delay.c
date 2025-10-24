@@ -1,4 +1,16 @@
+/**
+ * @file delay.c
+ * @author your name (you@domain.com)
+ * @brief
+ * @version 0.1
+ * @date 2025-10-24
+ *
+ * @copyright Copyright (c) 2025
+ *
+ */
+
 #include "delay.h"
+
 #include <stdio.h>
 
 static uint32_t num_timers;
@@ -7,7 +19,8 @@ static bool any_timer_running;
 
 /**
  * @brief delay_init Initialize the non-blocking delay
- * @warning This delay assumes that you are using SysTick as a system timebase source
+ * @warning This delay assumes that you are using SysTick as a system timebase
+ * source
  *          .<br>
  *          Also assumes that it is used with a configure 1ms tick.<br>
  *          If this is not the case, it's mandatory to configure SysTick in this
@@ -86,6 +99,6 @@ void delay_update(void) {
   }
 }
 
-void check_delay_counter(uint32_t timer_idx){
+void check_delay_counter(uint32_t timer_idx) {
   // printf("\r\nDelay counter: %d\r\n", delay_timers[timer_idx].delay_counter);
 }

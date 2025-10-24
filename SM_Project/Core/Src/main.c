@@ -54,42 +54,12 @@
   /*Pequeña pruebita*/
   int32_t at_command_delay;
   extern UART_HandleTypeDef huart2;
-  volatile uint8_t rx_bytes_count = 0;
-  char rx_buffer[128] = {0};
-  volatile uint8_t rx_index = 0;
-  bool response_complete = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if(huart->Instance == USART2) {
-    // response_complete = true;
-    rx_index++;
-    
-    /**CHECK FOR COMPLETE AT RESPONSE**/
-    // if(rx_buffer[rx_index-1] == '\r' && rx_index > 0) {
-    //   // Look for OK or ERROR at end
-    //   if(rx_buffer[0] == '\0'){
-    //     rx_buffer[0] = 10;
-    //   }
-    //   char *result1;
-    //   char *result2;
-    //   result1 = strstr(rx_buffer, "\r\nOK\r\n");
-    //   result2 = strstr(rx_buffer, "\r\nERROR\r\n");
-    //   if(result1 != NULL || result2 != NULL) {
-    //     response_complete = true;
-    //   }
-    // }
-    
-    /**CRITICAL: RESTART FOR NEXT BYTE**/
-    if(rx_index < sizeof(rx_buffer) - 1) {
-      HAL_UART_Receive_DMA(&huart2, (uint8_t*)&rx_buffer[rx_index], 1);
-    }
-  }
-}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -136,9 +106,6 @@ int main(void)
   delay_init();
   ATCore_init(&huart2);
   
-  /*Enciendo Level_Shifter*/
-  HAL_GPIO_WritePin(ENA_LVL_SHIFTER_GPIO_Port, ENA_LVL_SHIFTER_Pin, GPIO_PIN_SET);
-  
   /*Creo delay para comandos at*/
   at_command_delay = delay_timer_create();
   atcmd_desc_t at_test = {
@@ -146,13 +113,9 @@ int main(void)
     .cmd_mode = 0,
     .id = CMD_AT,
   };
-  UNUSED(at_test);
-  char at_cmd[] = "AT+IPR?\r\n";
+  ATCore_send_cmd(&at_test);
 
-  DEBUG_PRINTF("Envio comando AT POSTA");
-  HAL_UART_Receive_DMA(&huart2, (uint8_t*)rx_buffer, 1);
-  HAL_UART_Transmit(&huart2, (uint8_t*)at_cmd, strlen(at_cmd),1);
-  delay_start(at_command_delay, 300);
+  delay_start(at_command_delay, 3000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -164,15 +127,8 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     if(delay_has_finished(at_command_delay)){
-      DEBUG_PRINTF("Llego la navidad JIJOOO \r\n");
-      if(rx_buffer[0] == '\0'){
-        rx_buffer[0] = 10;
-      }
-      char *result;
-      result = strstr(rx_buffer, "\r\nOK\r\n");
-      if(result != NULL){
-        printf("Agarrate las tetas bebeto\r\n");
-      }
+      DEBUG_PRINTF("Llego la navidad JIJOOO \r\n"); 
+      ATCore_send_cmd(&at_test);
     }
   } 
   /* USER CODE END 3 */

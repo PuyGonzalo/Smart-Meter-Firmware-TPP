@@ -1,3 +1,14 @@
+/**
+ * @file at_device.h
+ * @author your name (you@domain.com)
+ * @brief 
+ * @version 0.1
+ * @date 2025-10-24
+ * 
+ * @copyright Copyright (c) 2025
+ * 
+ */
+ 
 #ifndef _AT_DEVICE_H_
 #define _AT_DEVICE_H_
 
