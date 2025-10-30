@@ -1,9 +1,33 @@
-typedef struct
-{
-  atparser_AnswerExpect_t answer_expected; /* expected answer type for this command */
-  uint8_t endstr[AT_CMD_MAX_END_STR_SIZE]; /* termination string for AT cmd */
+/**
+ * @file at_parser.h
+ * @author your name (you@domain.com)
+ * @brief 
+ * @version 0.1
+ * @date 2025-10-28
+ * 
+ * @copyright Copyright (c) 2025
+ * 
+*/
 
-  /* save ptr on input buffer */
-  at_buf_t *p_cmd_input;
+#ifndef _AT_PARSER_H_
+#define _AT_PARSER_H_
 
-} atparser_context_t;
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "at_device.h"
+
+
+void fBuild_Envelope(); //Esto de parametros necesitaría recibir: msg_type, dev_id, seq, payload(de ser necesario), MAC
+void fParse_Envelope();
+
+/* Build AT Commands Functions */
+void fCmdBuild_NoParams(char *cmd, const char *cmd_string, atcmd_desc_t *atcmd_desc);
+
+
+#endif //_AT_PARSER_H_

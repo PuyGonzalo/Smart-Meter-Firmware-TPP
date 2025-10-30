@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025
  * 
  */
- 
+
 #ifndef _AT_DEVICE_H_
 #define _AT_DEVICE_H_
 
@@ -19,14 +19,19 @@
 #include "bg95_at_cmd_lib.h"
 
 #define ATCMD_MAX_PARAM_SIZE 10
+#define ATCMD_MAX_STRPARAM_SIZE 128
 
 typedef struct
 {
-  // at_type_t type;
   uint32_t id;
   uint32_t at_cmd_size;
   uint8_t cmd_mode;
-  uint8_t params[ATCMD_MAX_PARAM_SIZE]; 
+  uint8_t msg_type;
+  uint8_t params[ATCMD_MAX_PARAM_SIZE];
+  char str_params[ATCMD_MAX_STRPARAM_SIZE];
+  uint8_t nb_params;
+  uint8_t nb_str_params;
+  char payload[ATCMD_MAX_STRPARAM_SIZE];
 } atcmd_desc_t;
 
 typedef struct {

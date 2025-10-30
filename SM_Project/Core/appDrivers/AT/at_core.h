@@ -8,7 +8,7 @@
  * @copyright Copyright (c) 2025
  * 
  */
- 
+
 #ifndef _AT_CORE_H_
 #define _AT_CORE_H_
 
@@ -16,10 +16,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "at_device.h"
+#include "at_parser.h"
+#include "at_net.h"
 #include "bg95.h"
 
 /**

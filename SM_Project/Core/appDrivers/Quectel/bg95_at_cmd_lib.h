@@ -1,10 +1,13 @@
-
+#ifndef _BG95_AT_CMD_LIB_H_
+#define _BG95_AT_CMD_LIB_H_
 
 #define BG95_DEFAULT_TIMEOUT ((uint32_t)15000U)
 #define BG95_RDY_TIMEOUT ((uint32_t)30000U)
 #define BG95_APP_RDY_TIMEOUT ((uint32_t)10000U)
 #define BG95_SIMREADY_TIMEOUT ((uint32_t)3000U)
-#define BG95_ESCAPE_TIMEOUT ((uint32_t)1000U)  /* maximum time allowed to receive a response to an Escape command */
+#define BG95_ESCAPE_TIMEOUT                                                    \
+  ((uint32_t)1000U) /* maximum time allowed to receive a response to an Escape \
+                       command */
 #define BG95_COPS_TIMEOUT ((uint32_t)180000U)  /* 180 sec */
 #define BG95_CGATT_TIMEOUT ((uint32_t)140000U) /* 140 sec */
 #define BG95_CGACT_TIMEOUT ((uint32_t)150000U) /* 150 sec */
@@ -22,45 +25,39 @@
 #define BG95_QIDEACT_TIMEOUT ((uint32_t)40000U)  /* 40 sec */
 #define BG95_QPING_TIMEOUT ((uint32_t)150000U)   /* 150 sec */
 #define BG95_QIDNSGIP_TIMEOUT ((uint32_t)60000U) /* 60 sec */
-#endif                                           /* (USE_SOCKETS_TYPE == USE_SOCKETS_MODEM) */
+#endif /* (USE_SOCKETS_TYPE == USE_SOCKETS_MODEM) */
 
 #define BG95_MODEM_SYNCHRO_AT_MAX_RETRIES ((uint8_t)30U)
-#define BG95_MAX_SIM_STATUS_RETRIES ((uint8_t)20U) /* maximum number of AT+QINISTAT retries to wait SIM ready \
-                                                    * multiply by BG95_SIMREADY_TIMEOUT to compute global     \
-                                                    * timeout value                                           \
-                                                    */
+#define BG95_MAX_SIM_STATUS_RETRIES                                         \
+  ((uint8_t)20U) /* maximum number of AT+QINISTAT retries to wait SIM ready \
+                  * multiply by BG95_SIMREADY_TIMEOUT to compute global     \
+                  * timeout value                                           \
+                  */
 
 enum {
   /* standard commands */
   CMD_AT = 0, /* empty command or empty answer */
-  CMD_AT_OK,
-  CMD_AT_CONNECT,
-  CMD_AT_RING,
-  CMD_AT_NO_CARRIER,
-  CMD_AT_ERROR,
-  CMD_AT_NO_DIALTONE,
-  CMD_AT_BUSY,
-  CMD_AT_NO_ANSWER,
-  CMD_AT_CME_ERROR,
-  CMD_AT_CMS_ERROR,
 
   /* 3GPP TS 27.007 and GSM 07.07 commands */
-  CMD_AT_CGMI,     /* Request manufacturer identification */
-  CMD_AT_CGMM,     /* Model identification */
-  CMD_AT_CGMR,     /* Revision identification */
-  CMD_AT_CGSN,     /* Product serial number identification */
-  CMD_AT_CIMI,     /* IMSI */
-  CMD_AT_CEER,     /* Extended error report */
-  CMD_AT_CMEE,     /* Report mobile equipment error */
-  CMD_AT_CPIN,     /* Enter PIN */
-  CMD_AT_CFUN,     /* Set phone functionality */
-  CMD_AT_COPS,     /* Operator selection */
-  CMD_AT_CNUM,     /* Subscriber number */
-  CMD_AT_CGATT,    /* PS attach or detach */
-  CMD_AT_CREG,     /* Network registration: enable or disable +CREG urc */
-  CMD_AT_CGREG,    /* GPRS network registation status: enable or disable +CGREG urc */
-  CMD_AT_CEREG,    /* EPS network registration status: enable or disable +CEREG urc */
-  CMD_AT_CGEREP,   /* Packet domain event reporting: enable or disable +CGEV urc */
+  CMD_AT_CGMI,  /* Request manufacturer identification */
+  CMD_AT_CGMM,  /* Model identification */
+  CMD_AT_CGMR,  /* Revision identification */
+  CMD_AT_CGSN,  /* Product serial number identification */
+  CMD_AT_CIMI,  /* IMSI */
+  CMD_AT_CEER,  /* Extended error report */
+  CMD_AT_CMEE,  /* Report mobile equipment error */
+  CMD_AT_CPIN,  /* Enter PIN */
+  CMD_AT_CFUN,  /* Set phone functionality */
+  CMD_AT_COPS,  /* Operator selection */
+  CMD_AT_CNUM,  /* Subscriber number */
+  CMD_AT_CGATT, /* PS attach or detach */
+  CMD_AT_CREG,  /* Network registration: enable or disable +CREG urc */
+  CMD_AT_CGREG, /* GPRS network registation status: enable or disable +CGREG urc
+                 */
+  CMD_AT_CEREG, /* EPS network registration status: enable or disable +CEREG urc
+                 */
+  CMD_AT_CGEREP,   /* Packet domain event reporting: enable or disable +CGEV urc
+                    */
   CMD_AT_CGEV,     /* EPS bearer indication status */
   CMD_AT_CSQ,      /* Signal quality */
   CMD_AT_CGDCONT,  /* Define PDP context */
@@ -75,11 +72,11 @@ enum {
   CMD_AT_CSIM,     /* Sim Generic Access */
 
   /* V.25TER commands */
-  CMD_ATD,      /* Dial */
-  CMD_ATE,      /* Command Echo */
-  CMD_ATH,      /* Hook control (disconnect existing connection) */
-  CMD_ATO,      /* Return to online data state (switch from COMMAND to DATA mode) */
-  CMD_ATV,      /* DCE response format */
+  CMD_ATD, /* Dial */
+  CMD_ATE, /* Command Echo */
+  CMD_ATH, /* Hook control (disconnect existing connection) */
+  CMD_ATO, /* Return to online data state (switch from COMMAND to DATA mode) */
+  CMD_ATV, /* DCE response format */
   CMD_AT_AND_W, /* Store current Parameters to User defined profile */
   CMD_AT_AND_D, /* Set DTR function mode */
   CMD_ATX,      /* CONNECT Result code and monitor call progress */
@@ -88,9 +85,20 @@ enum {
   CMD_AT_IPR,   /* Fixed DTE rate */
   CMD_AT_IFC,   /* set DTE-DCE local flow control */
 
-  /* other */
-  CMD_AT_ESC_CMD,      /* escape command for switching from DATA to COMMAND mode */
-  CMD_AT_DIRECT_CMD,   /* allow user to send command directly to the modem */
-  CMD_AT_LAST_GENERIC, /* keep it at last position */
+  /* TCP (IP) commands */
+  CMD_AT_QICSGP,
+  CMD_AT_QIACT,
+  CMD_AT_QIDEACT,
+  CMD_AT_QIOPEN,
+  CMD_AT_QICLOSE,
+  CMD_AT_QISTATE,
+  CMD_AT_QIRD,
+  CMD_AT_QISENDEX,
+  CMD_AT_QISDE,
+
+  /* Other commands */
+  CMD_AT_QICFG,
 
 };
+
+#endif  // _BG95_AT_CMD_LIB_H_

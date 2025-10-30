@@ -11,11 +11,6 @@
 
 #include "at_core.h"
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
-
 #include "stm32l0xx_hal_def.h"
 #include "stm32l0xx_hal_uart.h"
 
@@ -43,24 +38,9 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT, "", BG95_AT_TIMEOUT, fCmdBuild_NoParams,
      NULL}, /*Ultimo parametro en realidad es fRspAnalyze_None: chequear si me
                sirven*/
-    {CMD_AT_OK, "OK", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
-    {CMD_AT_CONNECT, "CONNECT", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
-    {CMD_AT_RING, "RING", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
-    {CMD_AT_NO_CARRIER, "NO CARRIER", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams,
-     NULL},
-    {CMD_AT_ERROR, "ERROR", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
-    {CMD_AT_NO_DIALTONE, "NO DIALTONE", BG95_DEFAULT_TIMEOUT,
-     fCmdBuild_NoParams, NULL},
-    {CMD_AT_BUSY, "BUSY", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
-    {CMD_AT_NO_ANSWER, "NO ANSWER", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams,
-     NULL},
-    {CMD_AT_CME_ERROR, "+CME ERROR", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams,
-     NULL},
-    {CMD_AT_CMS_ERROR, "+CMS ERROR", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams,
-     NULL},
 
-    /* GENERIC MODEM commands */
-    {CMD_AT_CGMI, "+CGMI", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
+    /* GENERAL MODEM commands */
+    {CMD_AT_CGMI, "+GMI", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_AT_CGMM, "+CGMM", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_AT_CGMR, "+CGMR", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_AT_CGSN, "+CGSN", BG95_DEFAULT_TIMEOUT, NULL, NULL},
@@ -89,12 +69,25 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_ATO, "O", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_ATV, "V", BG95_DEFAULT_TIMEOUT, NULL, NULL},
     {CMD_ATX, "X", BG95_DEFAULT_TIMEOUT, NULL, NULL},
-    {CMD_AT_ESC_CMD, "+++", BG95_ESCAPE_TIMEOUT, NULL, NULL},
     {CMD_AT_IPR, "+IPR", BG95_DEFAULT_TIMEOUT, NULL, NULL},
     {CMD_AT_IFC, "+IFC", BG95_DEFAULT_TIMEOUT, NULL, NULL},
     {CMD_AT_AND_W, "&W", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_AT_AND_D, "&D", BG95_DEFAULT_TIMEOUT, NULL, NULL},
-    {CMD_AT_DIRECT_CMD, "", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+
+    /* TCP (IP) */
+    {CMD_AT_QICSGP, "+QICSGP", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QIACT, "+QIACT", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QIDEACT, "+QIDEACT", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QIOPEN, "+QIOPEN", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QICLOSE, "+QICLOSE", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QISTATE, "+QISTATE", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QIRD, "+QIRD", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QISENDEX, "+QISENDEX", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_AT_QISDE, "+QISDE", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+
+    /* Other */
+    {CMD_AT_QICFG, "+QICFG", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+
 };
 
 #define SIZE_ATCMD_BG95_LUT \
@@ -114,7 +107,7 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
  */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
   if (huart->Instance == USART2) {
-    AT_DRV->rx_callback(AT_DEVICE, huart, Size);
+    AT_DRV->rx_callback(AT_DEVICE, Size);
   }
 }
 
@@ -174,23 +167,3 @@ bool ATCore_is_response_ready() { return AT_DEVICE->responseReady; }
 char *ATCore_get_last_response() { return AT_DRV->get_response(AT_DEVICE); }
 
 /* ---------------------- Private functions definition ---------------------- */
-
-/* ----------------------- Build AT Commands Functions ----------------------*/
-
-/**
- * @brief
- *
- * @param cmd
- * @param cmd_string
- * @param atcmd_desc
- */
-void fCmdBuild_NoParams(char *cmd, const char *cmd_string,
-                        atcmd_desc_t *atcmd_desc) {
-  if (cmd == NULL || cmd_string == NULL) return;
-
-  if (atcmd_desc->id == 0) {
-    snprintf(cmd, atcmd_desc->at_cmd_size + 1, "AT\r\n");
-  } else {
-    snprintf(cmd, atcmd_desc->at_cmd_size + 1, "AT%s", cmd_string);
-  }
-}

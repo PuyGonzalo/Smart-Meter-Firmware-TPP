@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include "stm32l0xx_hal.h"
+#include "bg95_at_cmd_lib.h"
 
 #define BG95_RX_BUFFER_SIZE 512
 #define BG95_TX_BUFFER_SIZE 128
@@ -65,12 +66,11 @@ typedef struct {
   char rxBuffer[BG95_RX_BUFFER_SIZE]; /** */
   char lastResponse[BG95_RX_BUFFER_SIZE]; /** */
   uint16_t last_response_size;/** */
-  volatile uint16_t rxHead; /** TODO: Sacar */
-  volatile uint16_t rxTail; /** TODO: Sacar */
   char txBuffer[BG95_TX_BUFFER_SIZE]; /** */
 
   bool responseReady; /** */
   bg95_resp_status_t responseStatus; /** */
+  bool data_mode;
 
   BG95_Pin_t lvl_shifter_pin; /** */
 
@@ -83,18 +83,18 @@ typedef struct {
 typedef struct {
   void (*init) (BG95_t *bg95, UART_HandleTypeDef *huart); /** */
   bg95_status_t (*send_command)(BG95_t *device, const char *cmd, uint16_t cmd_size); /** */
-  bool (*is_response_ready)(BG95_t *bg95); /** */
+  bg95_status_t (*check_response)(BG95_t *bg95); /** */
+  bool (*is_response_ready)(BG95_t *bg95);
   char* (*get_response)(BG95_t *bg95); /** */
-  void (*rx_callback)(BG95_t *device, UART_HandleTypeDef *huart, uint16_t rx_size); /** */
+  void (*rx_callback)(BG95_t *device, uint16_t rx_size); /** */
 } bg95_driver_t;
 
 
 void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart);
 bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd, uint16_t cmd_size);
 bool BG95_is_response_ready(BG95_t *bg95);
-bg95_status_t check_response_end(BG95_t *bg95);
-void set_last_response(BG95_t *bg95, uint16_t size);
-char* get_last_response(BG95_t *bg95);
-void BG95_rxcplt_callback(BG95_t *bg95, UART_HandleTypeDef *huart, uint16_t rx_size);
+bg95_status_t BG95_check_response(BG95_t *bg95);
+char* BG95_get_last_response(BG95_t *bg95);
+void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size);
 
 #endif

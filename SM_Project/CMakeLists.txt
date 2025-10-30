@@ -50,14 +50,15 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/appDrivers/AT/at_core.c
     Core/appDrivers/AT/at_net.c
     Core/appDrivers/AT/at_parser.c
+    Core/Modules/ATCom/ATCom.c
     Core/Src/delay.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    Core/appDrivers/AT
-    Core/appDrivers/Quectel
+    Core/appDrivers/AT/
+    Core/appDrivers/Quectel/
     Core/Modules/ATCom/
     Core/Inc
 )
