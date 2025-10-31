@@ -72,11 +72,12 @@ enum {
   CMD_AT_CSIM,     /* Sim Generic Access */
 
   /* V.25TER commands */
-  CMD_ATD, /* Dial */
-  CMD_ATE, /* Command Echo */
-  CMD_ATH, /* Hook control (disconnect existing connection) */
-  CMD_ATO, /* Return to online data state (switch from COMMAND to DATA mode) */
-  CMD_ATV, /* DCE response format */
+  CMD_ATD,  /* Dial */
+  CMD_ATE0, /* Command Echo deactivated*/
+  CMD_ATE1, /* Command Echo activated*/
+  CMD_ATH,  /* Hook control (disconnect existing connection) */
+  CMD_ATO,  /* Return to online data state (switch from COMMAND to DATA mode) */
+  CMD_ATV,  /* DCE response format */
   CMD_AT_AND_W, /* Store current Parameters to User defined profile */
   CMD_AT_AND_D, /* Set DTR function mode */
   CMD_ATX,      /* CONNECT Result code and monitor call progress */

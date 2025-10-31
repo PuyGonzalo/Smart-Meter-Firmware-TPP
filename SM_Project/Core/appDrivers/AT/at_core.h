@@ -66,6 +66,7 @@ typedef struct
 } at_context_t;
 
 void ATCore_init(UART_HandleTypeDef *huart);
+void ATCore_config();
 bool ATCore_send_cmd(atcmd_desc_t *cmd);
 bool ATCore_is_response_ready();
 char* ATCore_get_last_response();

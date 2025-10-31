@@ -21,6 +21,10 @@
 #define ATCMD_MAX_PARAM_SIZE 10
 #define ATCMD_MAX_STRPARAM_SIZE 128
 
+/**
+ * @brief 
+ * 
+ */
 typedef struct
 {
   uint32_t id;
@@ -34,6 +38,23 @@ typedef struct
   char payload[ATCMD_MAX_STRPARAM_SIZE];
 } atcmd_desc_t;
 
+/**
+ * @brief 
+ * 
+ */
+typedef struct {
+  uint8_t version;
+  uint8_t msg_type;
+  uint8_t device_id[16];
+  uint32_t seq;
+  uint32_t timestamp; //! TODO: En el informe tenemos que esde 64 bits. VER...
+  uint8_t mac[16];
+} envelope_t;
+
+/**
+ * @brief 
+ * 
+ */
 typedef struct {
   uint16_t cmd_id;
   const char *cmd_string;

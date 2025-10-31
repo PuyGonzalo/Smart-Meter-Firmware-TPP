@@ -26,15 +26,14 @@ const char AT_RESPONSE_ERR_CME[] = "\r\n+CME ERROR:";
 const bg95_driver_t BG95_Driver = {.init = &BG95_init,
                                    .send_command = &BG95_send_command,
                                    .is_response_ready = &BG95_is_response_ready,
-                                   .check_response = &BG95_check_response,
                                    .get_response = &BG95_get_last_response,
                                    .rx_callback = &BG95_rxcplt_callback};
 
 /* ---------------------- Private functions declaration --------------------- */
 
-static void _BG95_config(BG95_t *bg95);
 static void _enable_lvl_shifter(BG95_t *bg95);
 static void _disable_lvl_shifter(BG95_t *bg95);
+static bg95_status_t _BG95_check_response(BG95_t *bg95);
 static void _BG95_set_last_response(BG95_t *bg95, uint16_t size);
 
 /* -------------------------------- Callbacks ------------------------------- */
@@ -60,14 +59,18 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
     bg95->rxBuffer[0] = 76;
   }
 
+  _BG95_check_response(bg95);
+
   _BG95_set_last_response(bg95, rx_size);
 
   HAL_UART_DMAStop(bg95->huart);
 
-  if (bg95->data_mode) {
-    HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
-                                 BG95_RX_BUFFER_SIZE);
-  }
+  // Esto en principio no hace falta, pero lo dejo por si las dudas.
+
+  // if (bg95->data_mode) {
+  //   HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
+  //                                BG95_RX_BUFFER_SIZE);
+  // }
 }
 
 /* ----------------------- Public functions definition ---------------------- */
@@ -91,8 +94,6 @@ void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart) {
   bg95->lvl_shifter_pin.GPIOx = ENA_LVL_SHIFTER_GPIO_Port;
   bg95->lvl_shifter_pin.GPIO_Pin = ENA_LVL_SHIFTER_Pin;
   /// TODO: Agregar en un futuro pines para on/off del módulo.
-
-  _BG95_config(bg95);
 }
 
 /**
@@ -143,29 +144,7 @@ bool BG95_is_response_ready(BG95_t *bg95) {
 }
 
 /**
- * @brief
- *
- * @param bg95
- * @return bg95_status_t
- */
-bg95_status_t BG95_check_response(BG95_t *bg95) {
-  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
-
-  if ((strstr(bg95->lastResponse, AT_RESPONSE_ERR) != NULL)) {
-    bg95->responseStatus = BG95_RESP_ERROR;
-  } else if ((strstr(bg95->lastResponse, AT_RESPONSE_ERR_CME) != NULL)) {
-    bg95->responseStatus = BG95_RESP_ERROR_CME;
-  } else if (strstr(bg95->lastResponse, AT_RESPONSE_OK) != NULL) {
-    bg95->responseStatus = BG95_RESP_OK;
-  }
-
-  return BG95_OK;
-}
-
-/**
  * @brief Get the last response object
- * TODO: Esto esta medio al pedo ahora que lo pienso, pero lo dejo para
- * chequear.
  * @param bg95
  * @return char*
  */
@@ -184,13 +163,6 @@ char *BG95_get_last_response(BG95_t *bg95) {
  *
  * @param bg95
  */
-static void _BG95_config(BG95_t *bg95) {}
-
-/**
- * @brief
- *
- * @param bg95
- */
 static void _enable_lvl_shifter(BG95_t *bg95) {
   HAL_GPIO_WritePin(bg95->lvl_shifter_pin.GPIOx, bg95->lvl_shifter_pin.GPIO_Pin,
                     GPIO_PIN_SET);
@@ -202,21 +174,77 @@ static void _disable_lvl_shifter(BG95_t *bg95) {
 }
 
 /**
- * @brief Set the last response object
+ * @brief
  *
  * @param bg95
- * @param size
+ * @return bg95_status_t
+ */
+static bg95_status_t _BG95_check_response(BG95_t *bg95) {
+  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
+
+  if ((strstr(bg95->lastResponse, AT_RESPONSE_ERR) != NULL)) {
+    bg95->responseStatus = BG95_RESP_ERROR;
+  } else if ((strstr(bg95->lastResponse, AT_RESPONSE_ERR_CME) != NULL)) {
+    bg95->responseStatus = BG95_RESP_ERROR_CME;
+  } else if (strstr(bg95->lastResponse, AT_RESPONSE_OK) != NULL) {
+    bg95->responseStatus = BG95_RESP_OK;
+  }
+
+  return BG95_OK;
+}
+
+/**
+ * @brief Set the last response message (cleaned) and count its fields.
+ *
+ * Removes leading \r\n, trailing \r\nOK\r\n, counts number of fields (\r\n
+ * separated lines).
+ *
+ * @warning Only used this function with an OK response.
+ *
+ * @param bg95 Pointer to BG95 instance
+ * @param size Size of received data in rxBuffer
  */
 static void _BG95_set_last_response(BG95_t *bg95, uint16_t size) {
-  if (bg95 == NULL) return;
+  if (bg95 == NULL || size == 0) return;
 
   bg95->rxBuffer[size] = '\0';
-  bg95->last_response_size = size;
 
-  uint16_t len = size;
+  char *start = bg95->rxBuffer;
+  char *end = bg95->rxBuffer + size;
 
+  if (strncmp(start, "\r\n", 2) == 0) {
+    start += 2;
+  }
+
+  char *aux_ptr = NULL;
+
+  if (bg95->responseStatus == BG95_RESP_OK) {
+    aux_ptr = strstr(start, AT_RESPONSE_OK);
+  } else if (bg95->responseStatus == BG95_RESP_ERROR) {
+    aux_ptr = strstr(start, AT_RESPONSE_ERR);
+  } else if (bg95->responseStatus == BG95_RESP_ERROR_CME) {
+    aux_ptr = end - 2; /* In this case I only need to discard the las \r\n */
+  }
+
+  if (aux_ptr) {
+    end = aux_ptr;
+  }
+
+  uint16_t len = (uint16_t)(end - start);
   if (len >= sizeof(bg95->lastResponse)) len = sizeof(bg95->lastResponse) - 1;
 
-  strncpy(bg95->lastResponse, bg95->rxBuffer, len);
+  strncpy(bg95->lastResponse, start, len);
   bg95->lastResponse[len] = '\0';
+  bg95->last_response_size = len;
+
+  uint16_t fields = 0;
+
+  for (char *p = bg95->lastResponse; *p; ++p) {
+    if (p[0] == '\r' && p[1] == '\n') {
+      fields++;
+      p++;
+    }
+  }
+
+  bg95->last_response_fields = fields;
 }

@@ -13,6 +13,8 @@
 
 #include <stdint.h>
 
+/* ---------------------- Private functions declaration --------------------- */
+
 static void _get_str_slice(const char *str, size_t size, size_t offset,
                            size_t num_bytes, char *out_str, size_t out_size);
 static void _num_to_hex(char *dest, size_t size, uint32_t num,
@@ -20,13 +22,98 @@ static void _num_to_hex(char *dest, size_t size, uint32_t num,
 
 /* ----------------------- Public functions definition ---------------------- */
 
-// Doxygen
-void fBuild_Envelope() {}
+/**
+ * @brief
+ *
+ * @param envp
+ * @return char*
+ */
+char *fBuild_Envelope(envelope_t envp) {
+  char *aux = NULL;
+  return aux;
+}
 
-// Doxygen
-void fParse_Envelope() {}
+/**
+ * @brief
+ *
+ * @param envp
+ * @param payload
+ * @param payload_size
+ * @return true
+ * @return false
+ */
+bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload,
+                               uint16_t payload_size) {
+  return true;
+}
 
-/* ----------------------- Build AT Commands Functions ----------------------*/
+/**
+ * @brief
+ *
+ * @param envp
+ * @retval true
+ * @retval false
+ */
+bool fParse_Envelope(envelope_t *envp) { return true; }
+
+/**
+ * @brief
+ *
+ * @param envp
+ * @param payload
+ * @param payload_size
+ * @return true
+ * @return false
+ */
+bool fParse_Envelope_w_payload(envelope_t *envp, char *payload,
+                               uint16_t payload_size) {
+  return true;
+}
+
+/**
+ * @brief Get pointer and length of field N from a str with '\r\n' delimitter.
+ *
+ * @param str Input string (ended with '\0').
+ * @param field_index Index of wanted field (0 = first field).
+ * @param field_len Pointer to uint16_t variable where field length is stored.
+ * @retval Pointer to beginning of str field.
+ * @retval NULL if field doesn't exist.
+ *
+ * @code
+ * char str[] = "+CSQ: 15,99\r\n+CREG: 0,1\r\n+CGATT: 1"
+ * uint16_t field_index = 1;
+ *
+ * char *example_ptr;
+ * uint16_t wanted_field_size;
+ *
+ * // This will get:
+ * // Pointer to "+CREG: 0,1" beginning.
+ * // wanted_field_size = 10
+ * example_ptr = get_str_field(str, field_index, &wanted_field_size);
+ * @endcode
+ *
+ */
+char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len) {
+  if (str == NULL || field_len == NULL) return NULL;
+
+  char *p = str;
+  uint16_t current = 0;
+
+  while (current < field_index) {
+    char *next = strstr(p, "\r\n");
+    if (!next) return NULL;
+    p = next + 2;
+    current++;
+  }
+
+  const char *end = strstr(p, "\r\n");
+  if (!end) end = p + strlen(p);
+
+  *field_len = (uint16_t)(end - p);
+  return p;
+}
+
+/* ------------------ Build AT Commands Function definition ----------------- */
 
 /**
  * @brief
@@ -39,17 +126,17 @@ void fCmdBuild_NoParams(char *cmd, const char *cmd_string,
                         atcmd_desc_t *atcmd_desc) {
   if (cmd == NULL || cmd_string == NULL) return;
 
-  if (atcmd_desc->id == 0) {
+  if (atcmd_desc->id == CMD_AT) {
     snprintf(cmd, atcmd_desc->at_cmd_size, "AT\r\n");
   } else {
-    snprintf(cmd, atcmd_desc->at_cmd_size, "AT%s", cmd_string);
+    snprintf(cmd, atcmd_desc->at_cmd_size, "AT%s\r\n", cmd_string);
   }
 }
 
 /* ---------------------- Private functions definition ---------------------- */
 
 /**
- * @brief Get the str slice object
+ * @brief Get the str slice
  *
  * @param str Original string.
  * @param size Size of original string (str).

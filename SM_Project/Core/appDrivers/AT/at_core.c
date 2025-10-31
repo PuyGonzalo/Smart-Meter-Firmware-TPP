@@ -64,7 +64,8 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT_CGEREP, "+CGEREP", BG95_DEFAULT_TIMEOUT, NULL, NULL},
     {CMD_AT_CGEV, "+CGEV", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_ATD, "D", BG95_DEFAULT_TIMEOUT, NULL, NULL},
-    {CMD_ATE, "E", BG95_DEFAULT_TIMEOUT, NULL, NULL},
+    {CMD_ATE0, "E0", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
+    {CMD_ATE0, "E1", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_ATH, "H", BG95_ATH_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_ATO, "O", BG95_DEFAULT_TIMEOUT, fCmdBuild_NoParams, NULL},
     {CMD_ATV, "V", BG95_DEFAULT_TIMEOUT, NULL, NULL},
@@ -126,6 +127,12 @@ void ATCore_init(UART_HandleTypeDef *huart) {
 
   AT_DRV->init(AT_DEVICE, huart);
 }
+
+/**
+ * @brief
+ *
+ */
+void ATCore_config() {}
 
 /**
  * @brief

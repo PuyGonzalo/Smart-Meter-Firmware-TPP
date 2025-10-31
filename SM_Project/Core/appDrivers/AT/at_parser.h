@@ -23,10 +23,14 @@
 #include "at_device.h"
 
 
-void fBuild_Envelope(); //Esto de parametros necesitaría recibir: msg_type, dev_id, seq, payload(de ser necesario), MAC
-void fParse_Envelope();
+/* ---------------------- Public functions declaration ---------------------- */
+char *fBuild_Envelope(envelope_t envp);
+bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
+bool fParse_Envelope(envelope_t *envp);
+bool fParse_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
+char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
 
-/* Build AT Commands Functions */
+/* ----------------- Build AT Commands Function declaration ----------------- */
 void fCmdBuild_NoParams(char *cmd, const char *cmd_string, atcmd_desc_t *atcmd_desc);
 
 
