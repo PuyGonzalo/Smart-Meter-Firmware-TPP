@@ -168,7 +168,7 @@ static void _enable_lvl_shifter(BG95_t *bg95) {
                     GPIO_PIN_SET);
 }
 
-static void _disable_lvl_shifter(BG95_t *bg95) {
+static void __attribute__((unused)) _disable_lvl_shifter(BG95_t *bg95) {
   HAL_GPIO_WritePin(bg95->lvl_shifter_pin.GPIOx, bg95->lvl_shifter_pin.GPIO_Pin,
                     GPIO_PIN_RESET);
 }

@@ -26,7 +26,7 @@
 /* ---------------------- Public functions declaration ---------------------- */
 char *fBuild_Envelope(envelope_t envp);
 bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
-bool fParse_Envelope(envelope_t *envp);
+bool fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info);
 bool fParse_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
 char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
 

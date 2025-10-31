@@ -54,7 +54,38 @@ bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload,
  * @retval true
  * @retval false
  */
-bool fParse_Envelope(envelope_t *envp) { return true; }
+bool fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info) {
+  if (envp_info == NULL || envp == NULL) return false;
+
+  char str_aux[envp_size];
+  char *endptr;
+
+  /* Obtain Version */
+  _get_str_slice(envp, envp_size, 0, 1, str_aux, envp_size);
+  envp_info->version = (uint8_t)strtoul(str_aux, &endptr, 10);
+
+  /* Obtain Msg Type */
+  _get_str_slice(envp, envp_size, 1, 1, str_aux, envp_size);
+  envp_info->msg_type = (uint8_t)strtoul(str_aux, &endptr, 10);
+
+  /* Obtain Dev ID */
+  _get_str_slice(envp, envp_size, 2, 16, str_aux, envp_size);
+  // envp_info->device_id = ;
+
+  /* Obtain Seq */
+  _get_str_slice(envp, envp_size, 18, 4, str_aux, envp_size);
+  envp_info->seq = (uint32_t)strtoul(str_aux, &endptr, 10);
+
+  /* Obtain Timestamp */
+  _get_str_slice(envp, envp_size, 22, 8, str_aux, envp_size);
+  envp_info->timestamp = (uint32_t)strtoul(str_aux, &endptr, 10);
+
+  /* Obtain MAC Tag */
+  _get_str_slice(envp, envp_size, 30, 16, str_aux, envp_size);
+  // envp_info->mac = ;
+
+  return true;
+}
 
 /**
  * @brief
@@ -176,8 +207,9 @@ static void _get_str_slice(const char *str, size_t size, size_t offset,
  * @param num
  * @param num_bytes
  */
-static void _num_to_hex(char *dest, size_t dest_size, uint32_t num,
-                        uint8_t num_bytes) {
+static void __attribute__((unused)) _num_to_hex(char *dest, size_t dest_size,
+                                                uint32_t num,
+                                                uint8_t num_bytes) {
   int width = num_bytes * 2;
-  snprintf(dest, dest_size, "%0*X", width, num);
+  snprintf(dest, dest_size, "%0*lX", width, num);
 }
