@@ -20,23 +20,8 @@
 
 #define ATCMD_MAX_PARAM_SIZE 10
 #define ATCMD_MAX_STRPARAM_SIZE 128
-
-/**
- * @brief 
- * 
- */
-typedef struct
-{
-  uint32_t id;
-  uint32_t at_cmd_size;
-  uint8_t cmd_mode;
-  uint8_t msg_type;
-  uint8_t params[ATCMD_MAX_PARAM_SIZE];
-  char str_params[ATCMD_MAX_STRPARAM_SIZE];
-  uint8_t nb_params;
-  uint8_t nb_str_params;
-  char payload[ATCMD_MAX_STRPARAM_SIZE];
-} atcmd_desc_t;
+#define DEV_ID_BYTES 16
+#define MAC_BYTES 16
 
 /**
  * @brief 
@@ -45,11 +30,39 @@ typedef struct
 typedef struct {
   uint8_t version;
   uint8_t msg_type;
-  uint8_t device_id[16];
+  uint8_t device_id[DEV_ID_BYTES];
   uint32_t seq;
-  uint32_t timestamp; //! TODO: En el informe tenemos que esde 64 bits. VER...
-  uint8_t mac[16];
+  uint32_t timestamp; //! TODO: En el informe tenemos que es de 64 bits. VER...
+  uint8_t mac[MAC_BYTES];
 } envelope_t;
+
+/**
+ * @brief 
+ * 
+ */
+typedef enum {
+    AT_PARAM_NUM,
+    AT_PARAM_STR
+} at_param_type_t;
+
+/**
+ * @brief 
+ * 
+ */
+typedef struct
+{
+  uint32_t id;                                        /*!<  */
+  uint32_t at_cmd_size;                               /*!<  */
+  uint8_t cmd_mode;                                   /*!< 0 = Test, 1 = Read , 2 = Write */
+  envelope_t *envelope;                               /*!<  */
+  uint32_t envp_size;                                 /*!<  */
+  uint32_t num_params[ATCMD_MAX_PARAM_SIZE];          /*!<  */
+  char str_params[ATCMD_MAX_STRPARAM_SIZE];           /*!<  */
+  uint8_t nb_params;                                  /*!<  */
+  uint8_t nb_str_params;                              /*!<  */
+  uint8_t total_params;                               /*!<  */
+  at_param_type_t param_types[ATCMD_MAX_PARAM_SIZE];  /*!<  */
+} atcmd_desc_t;
 
 /**
  * @brief 
@@ -58,9 +71,8 @@ typedef struct {
 typedef struct {
   uint16_t cmd_id;
   const char *cmd_string;
-  uint32_t timeout;
-  void (*build)(char *cmd, const char *cmd_string, atcmd_desc_t *atcmd_desc);
-  void (*analyze)(const char *response);
+  uint16_t cmd_size;
+  void (*build)(atcmd_desc_t *atcmd_desc);
 } BG95_at_LUT_t;
 
 

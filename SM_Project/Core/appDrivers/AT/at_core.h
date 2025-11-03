@@ -56,21 +56,24 @@ typedef struct
   void *dev_driver;
   void *device;
 
+  uint8_t device_id[ENV_DEVID_BYTES];
+  uint8_t device_mac[ENV_MAC_BYTES];
+
+  uint8_t net_context;
+
   uint8_t in_data_mode;   /* current mode is DATA = 1 mode or COMMAND = 0 mode */
   uint8_t processing_cmd; /* indicate if a command is currently processed or if idle mode */
-  bool data_receive;
-
-  /* Parser context */
-  // atparser_context_t parser;
-
 } at_context_t;
 
 void ATCore_init(UART_HandleTypeDef *huart);
 void ATCore_config();
+void ATCore_set_device_id(uint8_t *dev_id);
+bool ATCore_compare_device_id(uint8_t *dev_id);
+void ATCore_set_device_mac(uint8_t *dev_mac);
+bool ATCore_compare_device_mac(uint8_t *dev_mac);
 bool ATCore_send_cmd(atcmd_desc_t *cmd);
 bool ATCore_is_response_ready();
+uint8_t ATCore_get_response_status();
 char* ATCore_get_last_response();
-
-void fCmdBuild_NoParams(char *cmd, const char *cmd_string, atcmd_desc_t *atcmd_desc);
 
 #endif  // _ATCORE_H_

@@ -23,11 +23,14 @@ const char AT_RESPONSE_OK[] = "\r\nOK\r\n";
 const char AT_RESPONSE_ERR[] = "\r\nERROR\r\n";
 const char AT_RESPONSE_ERR_CME[] = "\r\n+CME ERROR:";
 
-const bg95_driver_t BG95_Driver = {.init = &BG95_init,
-                                   .send_command = &BG95_send_command,
-                                   .is_response_ready = &BG95_is_response_ready,
-                                   .get_response = &BG95_get_last_response,
-                                   .rx_callback = &BG95_rxcplt_callback};
+const bg95_driver_t BG95_Driver = {
+    .init = &BG95_init,
+    .send_command = &BG95_send_command,
+    .is_response_ready = &BG95_is_response_ready,
+    .process_response = &BG95_process_rx,
+    .get_response_status = &BG95_get_response_status,
+    .get_response = &BG95_get_last_response,
+    .rx_callback = &BG95_rxcplt_callback};
 
 /* ---------------------- Private functions declaration --------------------- */
 
@@ -51,6 +54,7 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
     return;
   }
 
+  bg95->rx_size = rx_size;
   bg95->responseReady = true;
 
   /*Sometimes, BG95 sends '\0' character before the message*/
@@ -58,10 +62,6 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
   if (bg95->rxBuffer[0] == '\0') {
     bg95->rxBuffer[0] = 76;
   }
-
-  _BG95_check_response(bg95);
-
-  _BG95_set_last_response(bg95, rx_size);
 
   HAL_UART_DMAStop(bg95->huart);
 
@@ -84,6 +84,7 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
 void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart) {
   bg95->huart = huart;
   bg95->responseReady = false;
+  bg95->responseStatus = BG95_RESP_NOT_RECEIVED;
   bg95->last_response_size = 0;
   bg95->data_mode = false;
 
@@ -134,6 +135,28 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
  * @brief
  *
  * @param bg95
+ * @retval true
+ * @retval false
+ */
+bool BG95_process_rx(BG95_t *bg95) {
+  if (!bg95->responseReady) return false;
+
+  if (_BG95_check_response(bg95) != BG95_OK) return false;
+
+  _BG95_set_last_response(bg95, bg95->rx_size);
+
+  _disable_lvl_shifter(bg95);
+
+  bg95->responseReady = false;
+  bg95->rx_size = 0;
+
+  return true;
+}
+
+/**
+ * @brief
+ *
+ * @param bg95
  * @return true
  * @return false
  */
@@ -144,14 +167,20 @@ bool BG95_is_response_ready(BG95_t *bg95) {
 }
 
 /**
+ * @brief
+ *
+ * @param bg95
+ * @return uint8_t
+ */
+uint8_t BG95_get_response_status(BG95_t *bg95) { return bg95->responseStatus; }
+
+/**
  * @brief Get the last response object
  * @param bg95
  * @return char*
  */
 char *BG95_get_last_response(BG95_t *bg95) {
   if (bg95 == NULL) return NULL;
-
-  if (!bg95->responseReady) return NULL;
 
   return bg95->lastResponse;
 }
@@ -168,7 +197,7 @@ static void _enable_lvl_shifter(BG95_t *bg95) {
                     GPIO_PIN_SET);
 }
 
-static void __attribute__((unused)) _disable_lvl_shifter(BG95_t *bg95) {
+static void _disable_lvl_shifter(BG95_t *bg95) {
   HAL_GPIO_WritePin(bg95->lvl_shifter_pin.GPIOx, bg95->lvl_shifter_pin.GPIO_Pin,
                     GPIO_PIN_RESET);
 }
@@ -194,10 +223,13 @@ static bg95_status_t _BG95_check_response(BG95_t *bg95) {
 }
 
 /**
- * @brief Set the last response message (cleaned) and count its fields.
+ * @brief Set the last response message (cleaned) and count its fields.<br><br>
  *
- * Removes leading \r\n, trailing \r\nOK\r\n, counts number of fields (\r\n
- * separated lines).
+ * Removes:<br>
+ * - Leading \r\n<br>
+ * - Final <code>\r\nOK\r\n</code>, <code>\r\nERROR\r\n</code> or
+ * <code>\r\n</code> (for CME errors)<br><br>Also counts number of fields
+ * (<code>\r\n</code> separated lines).
  *
  * @warning Only used this function with an OK response.
  *

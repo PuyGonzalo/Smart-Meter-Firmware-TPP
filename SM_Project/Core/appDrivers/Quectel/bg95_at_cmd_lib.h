@@ -1,36 +1,28 @@
 #ifndef _BG95_AT_CMD_LIB_H_
 #define _BG95_AT_CMD_LIB_H_
 
-#define BG95_DEFAULT_TIMEOUT ((uint32_t)15000U)
-#define BG95_RDY_TIMEOUT ((uint32_t)30000U)
-#define BG95_APP_RDY_TIMEOUT ((uint32_t)10000U)
-#define BG95_SIMREADY_TIMEOUT ((uint32_t)3000U)
-#define BG95_ESCAPE_TIMEOUT                                                    \
-  ((uint32_t)1000U) /* maximum time allowed to receive a response to an Escape \
-                       command */
-#define BG95_COPS_TIMEOUT ((uint32_t)180000U)  /* 180 sec */
-#define BG95_CGATT_TIMEOUT ((uint32_t)140000U) /* 140 sec */
-#define BG95_CGACT_TIMEOUT ((uint32_t)150000U) /* 150 sec */
-#define BG95_ATH_TIMEOUT ((uint32_t)90000U)    /* 90 sec */
-#define BG95_AT_TIMEOUT ((uint32_t)1000U)      /* timeout for AT */
-#define BG95_QNWINFO_TIMEOUT ((uint32_t)1000U) /* 1000ms */
-#define BG95_CPSMS_TIMEOUT ((uint32_t)60000)
-#define BG95_CEDRX_TIMEOUT ((uint32_t)60000)
+#define BG95_COPS_CMD_SIZE 6 /* 180 sec */
+#define BG95_CGATT_CMD_SIZE 6
+#define BG95_CGACT_CMD_SIZE 6
+#define BG95_ATH_CMD_SIZE 6
+#define BG95_AT_CMD_SIZE 6
+#define BG95_QNWINFO_CMD_SIZE 6
+#define BG95_CPSMS_CMD_SIZE 6
+#define BG95_CEDRX_CMD_SIZE 6
 
 #if (USE_SOCKETS_TYPE == USE_SOCKETS_MODEM)
-#define BG95_SOCKET_PROMPT_TIMEOUT ((uint32_t)10000U)
-#define BG95_QIOPEN_TIMEOUT ((uint32_t)150000U)  /* 150 sec */
-#define BG95_QICLOSE_TIMEOUT ((uint32_t)150000U) /* 150 sec */
-#define BG95_QIACT_TIMEOUT ((uint32_t)150000U)   /* 150 sec */
-#define BG95_QIDEACT_TIMEOUT ((uint32_t)40000U)  /* 40 sec */
-#define BG95_QPING_TIMEOUT ((uint32_t)150000U)   /* 150 sec */
-#define BG95_QIDNSGIP_TIMEOUT ((uint32_t)60000U) /* 60 sec */
+#define BG95_QIOPEN_CMD_SIZE 1
+#define BG95_QICLOSE_CMD_SIZE 15
+#define BG95_QIACT_CMD_SIZE 15
+#define BG95_QIDEACT_CMD_SIZE 4
+#define BG95_QPING_CMD_SIZE 1
+#define BG95_QIDNSGIP_CMD_SIZE 6
 #endif /* (USE_SOCKETS_TYPE == USE_SOCKETS_MODEM) */
 
 #define BG95_MODEM_SYNCHRO_AT_MAX_RETRIES ((uint8_t)30U)
 #define BG95_MAX_SIM_STATUS_RETRIES                                         \
   ((uint8_t)20U) /* maximum number of AT+QINISTAT retries to wait SIM ready \
-                  * multiply by BG95_SIMREADY_TIMEOUT to compute global     \
+                  * multiply by BG95_SIMREADY_CMD_SIZE to compute global    \
                   * timeout value                                           \
                   */
 

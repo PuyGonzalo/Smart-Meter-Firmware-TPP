@@ -28,5 +28,7 @@
 #define HES_MSG_TYPE_ACTION_RESPONSE       0x29 /** */
 #define HES_MSG_TYPE_ACK                   0xFF /** */
 
+#define BG95_CONTEXT_ID 1
+
 
 #endif //_AT_NET_H_

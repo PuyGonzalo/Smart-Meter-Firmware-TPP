@@ -19,19 +19,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "at_device.h"
+#include "at_net.h"
 
+#define ENV_VERSION_OFFSET 0
+#define ENV_VERSION_BYTES 1
+#define ENV_MSGTYPE_OFFSET 1
+#define ENV_MSGTYPE_BYTES 1
+#define ENV_DEVID_OFFSET 2
+#define ENV_DEVID_BYTES (DEV_ID_BYTES)
+#define ENV_SEQ_OFFSET 18
+#define ENV_SEQ_BYTES 4
+#define ENV_TIMESTAMP_OFFSET 22
+#define ENV_TIMESTAMP_BYTES 8
+#define ENV_MAC_OFFSET 30
+#define ENV_MAC_BYTES (MAC_BYTES)
+#define MAX_ENV_SIZE 128
 
 /* ---------------------- Public functions declaration ---------------------- */
-char *fBuild_Envelope(envelope_t envp);
+char *fBuild_Envelope(const envelope_t *envp, uint16_t *size);
 bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
 bool fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info);
 bool fParse_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
 char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
 
 /* ----------------- Build AT Commands Function declaration ----------------- */
-void fCmdBuild_NoParams(char *cmd, const char *cmd_string, atcmd_desc_t *atcmd_desc);
+/**
+* @addtogroup ATCommandBuilders
+* @brief AT Commands builder functions.
+* @{
+*/
+void fCmdBuild_NoParams(atcmd_desc_t *atcmd_desc);
+/** @} */
+
 
 
 #endif //_AT_PARSER_H_
