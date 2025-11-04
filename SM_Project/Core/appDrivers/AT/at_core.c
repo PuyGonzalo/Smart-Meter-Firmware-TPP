@@ -11,6 +11,9 @@
 
 #include "at_core.h"
 
+#include <stdint.h>
+
+#include "at_device.h"
 #include "at_parser.h"
 #include "stm32l0xx_hal_def.h"
 #include "stm32l0xx_hal_uart.h"
@@ -36,9 +39,7 @@ static BG95_t bg95_device;
 static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     /* cmd enum - cmd string - cmd timeout (in ms) - build cmd ftion - analyze
        cmd ftion */
-    {CMD_AT, "", 2, fCmdBuild_NoParams,
-     NULL}, /*Ultimo parametro en realidad es fRspAnalyze_None: chequear si me
-               sirven*/
+    {CMD_AT, "", 2, fCmdBuild_NoParams},
 
     /* GENERAL MODEM commands */
     {CMD_AT_CGMI, "+GMI", 4, fCmdBuild_NoParams},
@@ -78,14 +79,13 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
 
     /* TCP (IP) */
     {CMD_AT_QICSGP, "+QICSGP", 7, NULL},
-    {CMD_AT_QIACT, "+QIACT", 6, NULL},
-    {CMD_AT_QIDEACT, "+QIDEACT", 8, NULL},
-    {CMD_AT_QIOPEN, "+QIOPEN", 7, NULL},
-    {CMD_AT_QICLOSE, "+QICLOSE", 8, NULL},
-    {CMD_AT_QISTATE, "+QISTATE", 8, NULL},
-    {CMD_AT_QIRD, "+QIRD", 5, NULL},
-    {CMD_AT_QISENDEX, "+QISENDEX", 9, NULL},
-    {CMD_AT_QISDE, "+QISDE", 6, NULL},
+    {CMD_AT_QIACT, "+QIACT", 6, fCmdBuild_ATQIACT},
+    {CMD_AT_QIDEACT, "+QIDEACT", 8, fCmdBuild_ATQIDEACT},
+    {CMD_AT_QIOPEN, "+QIOPEN", 7, fCmdBuild_ATQIOPEN},
+    {CMD_AT_QICLOSE, "+QICLOSE", 8, fCmdBuild_ATQICLOSE},
+    {CMD_AT_QISTATE, "+QISTATE", 8, fCmdBuild_ATQISTATE},
+    {CMD_AT_QIRD, "+QIRD", 5, fCmdBuild_ATQIRD},
+    {CMD_AT_QISENDEX, "+QISENDEX", 9, fCmdBuild_ATQISENDEX},
 
     /* Other */
     {CMD_AT_QICFG, "+QICFG", 6, NULL},
@@ -210,10 +210,33 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
 
   if (cmd->id >= SIZE_ATCMD_BG95_LUT) return false;
 
-  char command[256];
-  ATCMD_BG95_LUT[cmd->id].build(cmd);
+  uint16_t command_max_size = 256;
+  char command[command_max_size];
+  uint32_t cmd_size_aux = 0;
 
-  ret = AT_DRV->send_command(AT_DEVICE, command, cmd->at_cmd_size);
+  cmd->at_cmd_size = ATCMD_BG95_LUT[cmd->id].cmd_size;
+  ATCMD_BG95_LUT[cmd->id].build(cmd);
+  cmd_size_aux = cmd->at_cmd_size;
+
+  if (cmd->cmd_mode == AT_CMD_EXEC) {
+    snprintf(command, cmd_size_aux, "AT%s\r\n",
+             ATCMD_BG95_LUT[cmd->id].cmd_string);
+  } else if (cmd->cmd_mode == AT_CMD_TEST) {
+    snprintf(command, cmd_size_aux, "AT%s=?\r\n",
+             ATCMD_BG95_LUT[cmd->id].cmd_string);
+  } else if (cmd->cmd_mode == AT_CMD_READ) {
+    snprintf(command, cmd->at_cmd_size, "AT%s?\r\n",
+             ATCMD_BG95_LUT[cmd->id].cmd_string);
+  } else if (cmd->cmd_mode == AT_CMD_WRITE ||
+             cmd->cmd_mode == AT_CMD_WRITE_DEFAULT ||
+             cmd->cmd_mode == AT_CMD_WRITE_OPT) {
+    cmd_size_aux =
+        Parser_calculate_cmd_size(ATCMD_BG95_LUT[cmd->id].cmd_string, cmd);
+    Parser_build_cmd(command, command_max_size,
+                     ATCMD_BG95_LUT[cmd->id].cmd_string, cmd);
+  }
+
+  ret = AT_DRV->send_command(AT_DEVICE, command, cmd_size_aux);
 
   result = (ret == 0);
 

@@ -19,15 +19,12 @@
 #include "stm32l0xx_hal_uart.h"
 #include "stm32l0xx_hal_uart_ex.h"
 
-const char AT_RESPONSE_OK[] = "\r\nOK\r\n";
-const char AT_RESPONSE_ERR[] = "\r\nERROR\r\n";
-const char AT_RESPONSE_ERR_CME[] = "\r\n+CME ERROR:";
-
 const bg95_driver_t BG95_Driver = {
     .init = &BG95_init,
     .send_command = &BG95_send_command,
     .is_response_ready = &BG95_is_response_ready,
     .process_response = &BG95_process_rx,
+    .quick_check_response = &BG95_quick_check_response,
     .get_response_status = &BG95_get_response_status,
     .get_response = &BG95_get_last_response,
     .rx_callback = &BG95_rxcplt_callback};
@@ -157,6 +154,29 @@ bool BG95_process_rx(BG95_t *bg95) {
  * @brief
  *
  * @param bg95
+ * @return bg95_status_t
+ */
+bg95_status_t BG95_quick_check_response(BG95_t *bg95) {
+  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
+
+  if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR) != NULL)) {
+    bg95->responseStatus = BG95_RESP_ERROR;
+  } else if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR_CME) != NULL)) {
+    bg95->responseStatus = BG95_RESP_ERROR_CME;
+  } else if (strstr(bg95->rxBuffer, AT_RESPONSE_OK) != NULL) {
+    bg95->responseStatus = BG95_RESP_OK;
+  }
+
+  bg95->responseReady = false;
+  bg95->rx_size = 0;
+
+  return BG95_OK;
+}
+
+/**
+ * @brief
+ *
+ * @param bg95
  * @return true
  * @return false
  */
@@ -211,11 +231,11 @@ static void _disable_lvl_shifter(BG95_t *bg95) {
 static bg95_status_t _BG95_check_response(BG95_t *bg95) {
   if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
 
-  if ((strstr(bg95->lastResponse, AT_RESPONSE_ERR) != NULL)) {
+  if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR) != NULL)) {
     bg95->responseStatus = BG95_RESP_ERROR;
-  } else if ((strstr(bg95->lastResponse, AT_RESPONSE_ERR_CME) != NULL)) {
+  } else if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR_CME) != NULL)) {
     bg95->responseStatus = BG95_RESP_ERROR_CME;
-  } else if (strstr(bg95->lastResponse, AT_RESPONSE_OK) != NULL) {
+  } else if (strstr(bg95->rxBuffer, AT_RESPONSE_OK) != NULL) {
     bg95->responseStatus = BG95_RESP_OK;
   }
 

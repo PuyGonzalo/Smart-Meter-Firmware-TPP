@@ -29,6 +29,12 @@
 #define HES_MSG_TYPE_ACK                   0xFF /** */
 
 #define BG95_CONTEXT_ID 1
+#define BG95_CONNECT_ID 0
+#define BG95_BACKDOOR_PORT 6565
+#define BG95_ACCESS_MODE 0
+#define BG95_QICLOSE_DFLT_TIMEOUT 10
+#define BG95_QISTATE_DFLT_QUERY 0
 
+static const char BG95_QIOPEN_STR_PARAMS[] = "UDP%mechardo3d.mooo.com";
 
 #endif //_AT_NET_H_

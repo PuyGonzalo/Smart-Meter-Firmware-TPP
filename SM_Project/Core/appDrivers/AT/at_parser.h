@@ -43,6 +43,10 @@ char *fBuild_Envelope(const envelope_t *envp, uint16_t *size);
 bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
 bool fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info);
 bool fParse_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
+void Parser_build_cmd(char *out, size_t out_size,
+                              const char *cmd_string, const atcmd_desc_t *desc);
+uint32_t Parser_calculate_cmd_size(const char *cmd_string,
+                                           const atcmd_desc_t *desc);
 char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
 
 /* ----------------- Build AT Commands Function declaration ----------------- */
@@ -52,6 +56,13 @@ char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
 * @{
 */
 void fCmdBuild_NoParams(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQIACT(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQIDEACT(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc);
 /** @} */
 
 

@@ -87,11 +87,14 @@ enum {
   CMD_AT_QISTATE,
   CMD_AT_QIRD,
   CMD_AT_QISENDEX,
-  CMD_AT_QISDE,
 
   /* Other commands */
   CMD_AT_QICFG,
 
 };
+
+static const char AT_RESPONSE_OK[] = "\r\nOK\r\n";
+static const char AT_RESPONSE_ERR[] = "\r\nERROR\r\n";
+static const char AT_RESPONSE_ERR_CME[] = "\r\n+CME ERROR:";
 
 #endif  // _BG95_AT_CMD_LIB_H_

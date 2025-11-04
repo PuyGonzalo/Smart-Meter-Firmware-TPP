@@ -87,6 +87,7 @@ typedef struct {
   bg95_status_t (*send_command)(BG95_t *device, const char *cmd, uint16_t cmd_size); /** */
   bool (*is_response_ready)(BG95_t *bg95);
   bool (*process_response)(BG95_t *bg95);
+  bg95_status_t (*quick_check_response)(BG95_t *bg95);
   uint8_t (*get_response_status)(BG95_t *bg95);
   char* (*get_response)(BG95_t *bg95); /** */
   void (*rx_callback)(BG95_t *device, uint16_t rx_size); /** */
@@ -96,6 +97,7 @@ typedef struct {
 void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart);
 bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd, uint16_t cmd_size);
 bool BG95_process_rx(BG95_t *bg95);
+bg95_status_t BG95_quick_check_response(BG95_t *bg95);
 bool BG95_is_response_ready(BG95_t *bg95);
 uint8_t BG95_get_response_status(BG95_t *bg95);
 char* BG95_get_last_response(BG95_t *bg95);

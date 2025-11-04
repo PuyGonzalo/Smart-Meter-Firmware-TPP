@@ -24,6 +24,46 @@
 #define MAC_BYTES 16
 
 /**
+ * @brief Macro Initialize atcmd_desc_t struct.
+ *
+ * @code
+ * // Usage:
+ * atcmd_desc_t cmd = (atcmd_desc_t)ATCMD_DESC_DEFAULT;
+ * @endcode
+ */
+#define ATCMD_DESC_DEFAULT \
+    { .id = 0, \
+      .cmd_mode = CMD_MODE_EXEC, \
+      .envelope = NULL, \
+      .envp_size = 0, \
+      .num_params = {0}, \
+      .str_params = {0}, \
+      .nb_params = 0, \
+      .nb_str_params = 0, \
+      .total_params = 0, \
+      .param_types = {AT_NO_PARAM}}
+
+
+/**
+ * @brief 
+ * 
+ */
+typedef enum {
+    AT_PARAM_NUM,
+    AT_PARAM_STR,
+    AT_NO_PARAM
+} at_param_type_t;
+
+typedef enum {
+    AT_CMD_TEST,
+    AT_CMD_EXEC,
+    AT_CMD_READ,
+    AT_CMD_WRITE,
+    AT_CMD_WRITE_OPT,
+    AT_CMD_WRITE_DEFAULT,
+} at_cmd_mode_t;
+
+/**
  * @brief 
  * 
  */
@@ -40,20 +80,11 @@ typedef struct {
  * @brief 
  * 
  */
-typedef enum {
-    AT_PARAM_NUM,
-    AT_PARAM_STR
-} at_param_type_t;
-
-/**
- * @brief 
- * 
- */
 typedef struct
 {
   uint32_t id;                                        /*!<  */
   uint32_t at_cmd_size;                               /*!<  */
-  uint8_t cmd_mode;                                   /*!< 0 = Test, 1 = Read , 2 = Write */
+  at_cmd_mode_t cmd_mode;                             /*!< @see at_cmd_mode_t */
   envelope_t *envelope;                               /*!<  */
   uint32_t envp_size;                                 /*!<  */
   uint32_t num_params[ATCMD_MAX_PARAM_SIZE];          /*!<  */
