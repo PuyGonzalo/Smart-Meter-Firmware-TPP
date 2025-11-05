@@ -23,11 +23,41 @@ typedef enum {
   COM_REG_UDP_CTX,
   COM_REG_SEND,
   COM_REG_VERIFY_SEND,
-  COM_REG_WAIT,
-  COM_REG_PROCESS_RESP,
+  COM_REG_VERIFY_DATA_RDY,
+  COM_REG_WAIT_SEND,
+  COM_REG_WAIT_DATA_RDY,
+  COM_REG_DATA_REQUEST,
+  COM_REG_DATA_REQUEST_WAIT,
+  COM_REG_PROCESS_DATA,
   COM_REG_ACK,
   COM_REG_FINISHED
 } com_register_st;
+
+typedef enum {
+  COM_UDP_IDLE = 0,
+  COM_UDP_PROCESS_DONE = 1,
+  // COM_UDP_QIACT_SEND,
+  COM_UDP_QIACT_WAIT,
+  COM_UDP_QIOPEN_SEND,
+  COM_UDP_QIOPEN_WAIT,
+  COM_UDP_PROCESS_ERROR,
+} com_udp_st;
+
+typedef enum {
+  EV_UDP_CMD_OK,
+  EV_UDP_CMD_ERROR,
+  EV_UDP_TIMEOUT,
+  EV_UDP_URC_QIOPEN_OK,
+  EV_UDP_URC_QIOPEN_FAIL,
+  EV_UDP_START_UDP_SETUP,
+} com_udp_ev_t;
+
+typedef struct {
+    com_udp_st state;
+    com_udp_ev_t event;
+    // uint32_t timeout_ms;
+    uint8_t retries;
+} udp_fsm_t;
  
 void Com_network_connection_process();
 int Com_UDP_context_process();

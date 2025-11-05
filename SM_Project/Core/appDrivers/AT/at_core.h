@@ -73,7 +73,12 @@ void ATCore_set_device_mac(uint8_t *dev_mac);
 bool ATCore_compare_device_mac(uint8_t *dev_mac);
 bool ATCore_send_cmd(atcmd_desc_t *cmd);
 bool ATCore_is_response_ready();
+uint8_t ATCore_check_response();
+bool ATCore_process_response();
 uint8_t ATCore_get_response_status();
 char* ATCore_get_last_response();
+bool ATCore_cmp_str_in_field(const char *str, uint16_t field_index);
+int16_t ATCore_get_first_qird_value();
+void ATCore_set_data_mode();
 
 #endif  // _ATCORE_H_

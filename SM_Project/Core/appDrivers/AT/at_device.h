@@ -33,16 +33,15 @@
  */
 #define ATCMD_DESC_DEFAULT \
     { .id = 0, \
-      .cmd_mode = CMD_MODE_EXEC, \
+      .cmd_mode = AT_CMD_EXEC, \
       .envelope = NULL, \
       .envp_size = 0, \
       .num_params = {0}, \
       .str_params = {0}, \
-      .nb_params = 0, \
+      .nb_num_params = 0, \
       .nb_str_params = 0, \
       .total_params = 0, \
       .param_types = {AT_NO_PARAM}}
-
 
 /**
  * @brief 
@@ -89,7 +88,7 @@ typedef struct
   uint32_t envp_size;                                 /*!<  */
   uint32_t num_params[ATCMD_MAX_PARAM_SIZE];          /*!<  */
   char str_params[ATCMD_MAX_STRPARAM_SIZE];           /*!<  */
-  uint8_t nb_params;                                  /*!<  */
+  uint8_t nb_num_params;                              /*!<  */
   uint8_t nb_str_params;                              /*!<  */
   uint8_t total_params;                               /*!<  */
   at_param_type_t param_types[ATCMD_MAX_PARAM_SIZE];  /*!<  */

@@ -51,7 +51,7 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
     return;
   }
 
-  bg95->rx_size = rx_size;
+  bg95->rx_size += rx_size;
   bg95->responseReady = true;
 
   /*Sometimes, BG95 sends '\0' character before the message*/
@@ -62,11 +62,11 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
 
   HAL_UART_DMAStop(bg95->huart);
 
-  // Esto en principio no hace falta, pero lo dejo por si las dudas.
-
   // if (bg95->data_mode) {
-  //   HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
-  //                                BG95_RX_BUFFER_SIZE);
+  //   HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart,
+  //                                ((uint8_t *)bg95->rxBuffer) + rx_size,
+  //                                BG95_RX_BUFFER_SIZE - rx_size);
+  //   bg95->data_mode = false;
   // }
 }
 
@@ -83,6 +83,7 @@ void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart) {
   bg95->responseReady = false;
   bg95->responseStatus = BG95_RESP_NOT_RECEIVED;
   bg95->last_response_size = 0;
+  bg95->rx_size = 0;
   bg95->data_mode = false;
 
   memset(bg95->rxBuffer, 0, BG95_RX_BUFFER_SIZE);
@@ -117,6 +118,7 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
                                     BG95_RX_BUFFER_SIZE)) != HAL_OK) {
+    HAL_UART_DMAStop(bg95->huart);
     return BG95_SEND_CMD_ERROR;
   }
 
@@ -163,8 +165,14 @@ bg95_status_t BG95_quick_check_response(BG95_t *bg95) {
     bg95->responseStatus = BG95_RESP_ERROR;
   } else if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR_CME) != NULL)) {
     bg95->responseStatus = BG95_RESP_ERROR_CME;
+  } else if ((strstr(bg95->rxBuffer, AT_RESPONSE_SEND_OK) != NULL)) {
+    bg95->responseStatus = BG95_RESP_SEND_OK;
   } else if (strstr(bg95->rxBuffer, AT_RESPONSE_OK) != NULL) {
     bg95->responseStatus = BG95_RESP_OK;
+  } else {
+    bg95->responseReady = false;
+    bg95->rx_size = 0;
+    return BG95_CMD_RESP_ERROR;
   }
 
   bg95->responseReady = false;
@@ -235,6 +243,10 @@ static bg95_status_t _BG95_check_response(BG95_t *bg95) {
     bg95->responseStatus = BG95_RESP_ERROR;
   } else if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR_CME) != NULL)) {
     bg95->responseStatus = BG95_RESP_ERROR_CME;
+  } else if (strstr(bg95->rxBuffer, AT_RESPONSE_QI) != NULL) {
+    bg95->responseStatus = BG95_RESP_ERROR_CME;
+  } else if (strstr(bg95->rxBuffer, AT_RESPONSE_SEND_OK) != NULL) {
+    bg95->responseStatus = BG95_RESP_SEND_OK;
   } else if (strstr(bg95->rxBuffer, AT_RESPONSE_OK) != NULL) {
     bg95->responseStatus = BG95_RESP_OK;
   }
@@ -275,6 +287,8 @@ static void _BG95_set_last_response(BG95_t *bg95, uint16_t size) {
   } else if (bg95->responseStatus == BG95_RESP_ERROR) {
     aux_ptr = strstr(start, AT_RESPONSE_ERR);
   } else if (bg95->responseStatus == BG95_RESP_ERROR_CME) {
+    aux_ptr = end - 2; /* In this case I only need to discard the las \r\n */
+  } else if (bg95->responseStatus == BG95_RESP_EXTRA) {
     aux_ptr = end - 2; /* In this case I only need to discard the las \r\n */
   }
 

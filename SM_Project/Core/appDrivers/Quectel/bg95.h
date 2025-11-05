@@ -32,6 +32,7 @@ typedef enum {
   BG95_OK = 0,
   BG95_ERROR_NULL_POINTER,
   BG95_SEND_CMD_ERROR,
+  BG95_CMD_RESP_ERROR,
   BG95_ERROR_WRONG_PARAMS,
 } bg95_status_t;
 
@@ -41,6 +42,8 @@ typedef enum {
  */
 typedef enum {
   BG95_RESP_OK = 0,
+  BG95_RESP_SEND_OK,
+  BG95_RESP_EXTRA,
   BG95_RESP_ERROR,
   BG95_RESP_ERROR_CME,
   BG95_RESP_NOT_RECEIVED,
@@ -72,7 +75,7 @@ typedef struct {
 
   bool responseReady; /** */
   bg95_resp_status_t responseStatus; /** */
-  bool data_mode; /** */ // Esto en principio no hace falta
+  bool data_mode; /** */
 
   BG95_Pin_t lvl_shifter_pin; /** */
 

@@ -13,9 +13,9 @@
 
 #include <stdio.h>
 
-static uint32_t num_timers;
 static Delay_t delay_timers[MAX_TIMERS];
 static bool any_timer_running;
+static uint32_t num_timers;
 
 /**
  * @brief delay_init Initialize the non-blocking delay
@@ -97,8 +97,4 @@ void delay_update(void) {
       delay_timers[i].is_running = false;
     }
   }
-}
-
-void check_delay_counter(uint32_t timer_idx) {
-  // printf("\r\nDelay counter: %d\r\n", delay_timers[timer_idx].delay_counter);
 }

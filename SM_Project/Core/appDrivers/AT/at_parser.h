@@ -39,15 +39,16 @@
 #define MAX_ENV_SIZE 128
 
 /* ---------------------- Public functions declaration ---------------------- */
-char *fBuild_Envelope(const envelope_t *envp, uint16_t *size);
+char *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size);
 bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
-bool fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info);
+bool Parser_fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info);
 bool fParse_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
 void Parser_build_cmd(char *out, size_t out_size,
                               const char *cmd_string, const atcmd_desc_t *desc);
 uint32_t Parser_calculate_cmd_size(const char *cmd_string,
                                            const atcmd_desc_t *desc);
-char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
+char *Parser_get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
+int16_t Parser_get_first_qird_value(const char *resp);
 
 /* ----------------- Build AT Commands Function declaration ----------------- */
 /**

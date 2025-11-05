@@ -42,7 +42,7 @@ static char *next_token(const char **str);
  * @param size
  * @return char*
  */
-char *fBuild_Envelope(const envelope_t *envp, uint16_t *size) {
+char *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size) {
   if (!envp || !size) return NULL;
 
   char *p = envelope;
@@ -62,7 +62,7 @@ char *fBuild_Envelope(const envelope_t *envp, uint16_t *size) {
   total_len += sprintf(p + total_len, "%08lX", envp->seq);
 
   /* Timestamp */
-  total_len += sprintf(p + total_len, "%08lX", envp->timestamp);
+  total_len += sprintf(p + total_len, "%016lX", envp->timestamp); /*"%016lX"*/
 
   /* MAC */
   _bytes_to_hexstr(envp->mac, sizeof(envp->mac), p + total_len);
@@ -95,7 +95,8 @@ bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload,
  * @retval true
  * @retval false
  */
-bool fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info) {
+bool Parser_fParse_Envelope(char *envp, uint16_t envp_size,
+                            envelope_t *envp_info) {
   if (envp_info == NULL || envp == NULL) return false;
 
   char str_aux[envp_size];
@@ -164,19 +165,30 @@ void Parser_build_cmd(char *out, size_t out_size, const char *cmd_string,
   size_t written = 0;
   written += snprintf(out + written, out_size - written, "AT%s", cmd_string);
 
-  if (desc->nb_params > 0)
+  if (desc->total_params > 0)
     written += snprintf(out + written, out_size - written, "=");
 
   const char *sptr = desc->str_params;
 
-  for (uint8_t i = 0; i < desc->nb_params; i++) {
+  uint8_t num_param_count = 0;
+  uint8_t str_param_count = 0;
+
+  for (uint8_t i = 0; i < desc->total_params; i++) {
     if (desc->param_types[i] == AT_PARAM_NUM) {
-      written += snprintf(out + written, out_size - written, "%lu",
-                          desc->num_params[i]);
+      if (num_param_count < desc->nb_num_params) {
+        written += snprintf(out + written, out_size - written, "%lu",
+                            desc->num_params[num_param_count]);
+        num_param_count++;
+      }
     } else if (desc->param_types[i] == AT_PARAM_STR) {
-      const char *token = next_token(&sptr);
-      if (token)
-        written += snprintf(out + written, out_size - written, "\"%s\"", token);
+      if (str_param_count < desc->nb_str_params) {
+        const char *token = next_token(&sptr);
+        if (token)
+          written +=
+              snprintf(out + written, out_size - written, "\"%s\"", token);
+
+        str_param_count++;
+      }
     }
 
     if (i < desc->total_params - 1)
@@ -202,11 +214,11 @@ uint32_t Parser_calculate_cmd_size(const char *cmd_string,
   /* "AT" + command name */
   size += 2 + strlen(cmd_string);
 
-  bool has_params = (desc->nb_params > 0) || (desc->nb_str_params > 0);
+  bool has_params = (desc->nb_num_params > 0) || (desc->nb_str_params > 0);
   if (has_params) size += 1; /* '=' */
 
   /* Int params: Each number converted to string + coma */
-  for (uint8_t i = 0; i < desc->nb_params; i++)
+  for (uint8_t i = 0; i < desc->nb_num_params; i++)
     size += 10 + 1; /* up to 10 digits per number + ',' */
 
   /* Strings params: str_params with delimiter '%' */
@@ -251,7 +263,8 @@ uint32_t Parser_calculate_cmd_size(const char *cmd_string,
  * @endcode
  *
  */
-char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len) {
+char *Parser_get_str_field(char *str, uint16_t field_index,
+                           uint16_t *field_len) {
   if (str == NULL || field_len == NULL) return NULL;
 
   char *p = str;
@@ -269,6 +282,29 @@ char *get_str_field(char *str, uint16_t field_index, uint16_t *field_len) {
 
   *field_len = (uint16_t)(end - p);
   return p;
+}
+
+/**
+ * @brief
+ *
+ * @param resp
+ * @return int16_t
+ */
+int16_t Parser_get_first_qird_value(const char *resp) {
+  const char *p = strstr(resp, "+QIRD:");
+  if (!p) return -1;  // not found
+
+  p += 6;                               // skip "+QIRD:"
+  while (*p == ' ' || *p == '\t') p++;  // skip spaces if any
+
+  // strtol converts until a non-digit character (e.g. ',')
+  char *end;
+  long value = strtol(p, &end, 10);
+
+  // check that something valid was parsed
+  if (end == p) return -1;  // no digits found
+
+  return (int)value;
 }
 
 /* ------------------ Build AT Commands Function definition ----------------- */
@@ -320,23 +356,23 @@ void fCmdBuild_ATQIACT(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 6; /* 2 "AT" + 2 "=?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_READ) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 5; /* 2 "AT" + 1 "?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE_DEFAULT) {
-    atcmd_desc->nb_params = 1;
+    atcmd_desc->nb_num_params = 1;
     atcmd_desc->num_params[0] = BG95_CONTEXT_ID;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->total_params = 1;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_params = 1;
+    atcmd_desc->nb_num_params = 1;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->total_params = 1;
@@ -356,17 +392,17 @@ void fCmdBuild_ATQIDEACT(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 6; /* 2 "AT" + 2 "=?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE_DEFAULT) {
-    atcmd_desc->nb_params = 1;
+    atcmd_desc->nb_num_params = 1;
     atcmd_desc->num_params[0] = BG95_CONTEXT_ID;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->total_params = 1;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_params = 1;
+    atcmd_desc->nb_num_params = 1;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->total_params = 1;
@@ -386,11 +422,11 @@ void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 6; /* 2 "AT" + 2 "=?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE_DEFAULT) {
-    atcmd_desc->nb_params = 4;
+    atcmd_desc->nb_num_params = 4;
     atcmd_desc->num_params[0] = BG95_CONTEXT_ID;
     atcmd_desc->num_params[1] = BG95_CONNECT_ID;
     atcmd_desc->num_params[2] = BG95_BACKDOOR_PORT;
@@ -407,7 +443,7 @@ void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc) {
     atcmd_desc->param_types[5] = AT_PARAM_NUM;
     atcmd_desc->total_params = 6;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_params = 5;
+    atcmd_desc->nb_num_params = 5;
     atcmd_desc->nb_str_params = 2;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->param_types[1] = AT_PARAM_NUM;
@@ -433,11 +469,11 @@ void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 6; /* 2 "AT" + 2 "=?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE_DEFAULT) {
-    atcmd_desc->nb_params = 2;
+    atcmd_desc->nb_num_params = 2;
     atcmd_desc->num_params[0] = BG95_CONNECT_ID;
     atcmd_desc->num_params[1] = BG95_QICLOSE_DFLT_TIMEOUT;
     atcmd_desc->nb_str_params = 0;
@@ -445,7 +481,7 @@ void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc) {
     atcmd_desc->param_types[1] = AT_PARAM_NUM;
     atcmd_desc->total_params = 2;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_params = 2;
+    atcmd_desc->nb_num_params = 2;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->param_types[1] = AT_PARAM_NUM;
@@ -466,18 +502,18 @@ void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 6; /* 2 "AT" + 2 "=?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_READ ||
              atcmd_desc->cmd_mode == AT_CMD_EXEC) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 5; /* 2 "AT" + 1 "?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE_DEFAULT) {
-    atcmd_desc->nb_params = 2;
+    atcmd_desc->nb_num_params = 2;
     atcmd_desc->num_params[0] = BG95_QISTATE_DFLT_QUERY;
     atcmd_desc->num_params[1] = BG95_CONTEXT_ID;
     atcmd_desc->nb_str_params = 0;
@@ -485,7 +521,7 @@ void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc) {
     atcmd_desc->param_types[1] = AT_PARAM_NUM;
     atcmd_desc->total_params = 2;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_params = 2;
+    atcmd_desc->nb_num_params = 2;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->param_types[1] = AT_PARAM_NUM;
@@ -506,11 +542,11 @@ void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 6; /* 2 "AT" + 2 "=?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_params = 1;
+    atcmd_desc->nb_num_params = 1;
     atcmd_desc->nb_str_params = 1;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->param_types[1] = AT_PARAM_STR;
@@ -531,17 +567,17 @@ void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
     atcmd_desc->at_cmd_size =
         atcmd_desc->at_cmd_size + 6; /* 2 "AT" + 2 "=?" + 2 "\r\n" */
-    atcmd_desc->nb_params = 0;
+    atcmd_desc->nb_num_params = 0;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE_OPT) {
-    atcmd_desc->nb_params = 2;
+    atcmd_desc->nb_num_params = 2;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->param_types[1] = AT_PARAM_NUM;
     atcmd_desc->total_params = 2;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_params = 1;
+    atcmd_desc->nb_num_params = 1;
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
     atcmd_desc->total_params = 1;

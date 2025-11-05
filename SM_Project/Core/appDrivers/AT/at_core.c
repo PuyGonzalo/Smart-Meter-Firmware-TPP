@@ -12,6 +12,7 @@
 #include "at_core.h"
 
 #include <stdint.h>
+#include <string.h>
 
 #include "at_device.h"
 #include "at_parser.h"
@@ -46,7 +47,6 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT_CGMM, "+CGMM", 5, fCmdBuild_NoParams},
     {CMD_AT_CGMR, "+CGMR", 5, fCmdBuild_NoParams},
     {CMD_AT_CGSN, "+CGSN", 5, NULL},
-    {CMD_AT_GSN, "+GSN", 4, fCmdBuild_NoParams},
     {CMD_AT_CIMI, "+CIMI", 5, fCmdBuild_NoParams},
     {CMD_AT_CEER, "+CEER", 5, fCmdBuild_NoParams},
     {CMD_AT_CMEE, "+CMEE", 5, NULL},
@@ -55,27 +55,27 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT_COPS, "+COPS", 5, NULL},
     {CMD_AT_CNUM, "+CNUM", 5, fCmdBuild_NoParams},
     {CMD_AT_CGATT, "+CGATT", 6, NULL},
-    {CMD_AT_CGPADDR, "+CGPADDR", 8, NULL},
-    {CMD_AT_CEREG, "+CEREG", 6, NULL},
     {CMD_AT_CREG, "+CREG", 5, NULL},
     {CMD_AT_CGREG, "+CGREG", 6, NULL},
+    {CMD_AT_CEREG, "+CEREG", 6, NULL},
+    {CMD_AT_CGEREP, "+CGEREP", 7, NULL},
+    {CMD_AT_CGEV, "+CGEV", 5, fCmdBuild_NoParams},
     {CMD_AT_CSQ, "+CSQ", 4, fCmdBuild_NoParams},
     {CMD_AT_CGDCONT, "+CGDCONT", 8, NULL},
     {CMD_AT_CGACT, "+CGACT", 6, NULL},
     {CMD_AT_CGDATA, "+CGDATA", 7, NULL},
-    {CMD_AT_CGEREP, "+CGEREP", 7, NULL},
-    {CMD_AT_CGEV, "+CGEV", 5, fCmdBuild_NoParams},
+    {CMD_AT_CGPADDR, "+CGPADDR", 8, NULL},
     {CMD_ATD, "D", 1, NULL},
     {CMD_ATE0, "E0", 2, fCmdBuild_NoParams},
     {CMD_ATE0, "E1", 2, fCmdBuild_NoParams},
     {CMD_ATH, "H", 1, fCmdBuild_NoParams},
     {CMD_ATO, "O", 1, fCmdBuild_NoParams},
     {CMD_ATV, "V", 1, NULL},
+    {CMD_AT_AND_W, "&W", 2, fCmdBuild_NoParams},
+    {CMD_AT_AND_D, "&D", 2, NULL},
     {CMD_ATX, "X", 1, NULL},
     {CMD_AT_IPR, "+IPR", 4, NULL},
     {CMD_AT_IFC, "+IFC", 4, NULL},
-    {CMD_AT_AND_W, "&W", 2, fCmdBuild_NoParams},
-    {CMD_AT_AND_D, "&D", 2, NULL},
 
     /* TCP (IP) */
     {CMD_AT_QICSGP, "+QICSGP", 7, NULL},
@@ -135,7 +135,7 @@ void ATCore_init(UART_HandleTypeDef *huart) {
  */
 void ATCore_config() {}
 
-/**
+/**c
  * @brief
  *
  * @param dev_id
@@ -210,7 +210,7 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
 
   if (cmd->id >= SIZE_ATCMD_BG95_LUT) return false;
 
-  uint16_t command_max_size = 256;
+  uint16_t command_max_size = 128;
   char command[command_max_size];
   uint32_t cmd_size_aux = 0;
 
@@ -251,6 +251,10 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
  */
 bool ATCore_is_response_ready() { return AT_DRV->is_response_ready(AT_DEVICE); }
 
+uint8_t ATCore_check_response() {
+  return AT_DRV->quick_check_response(AT_DEVICE);
+}
+
 /**
  * @brief
  *
@@ -274,5 +278,50 @@ uint8_t ATCore_get_response_status() {
  * @return char*
  */
 char *ATCore_get_last_response() { return AT_DRV->get_response(AT_DEVICE); }
+
+/**
+ * @brief
+ *
+ * @param str
+ * @param field_index
+ * @return true
+ * @return false
+ */
+bool ATCore_cmp_str_in_field(const char *str, uint16_t field_index) {
+  if (field_index > AT_DEVICE->last_response_fields) return false;
+  char *aux_ptr;
+  char *result;
+  uint16_t field_size;
+
+  aux_ptr =
+      Parser_get_str_field(AT_DEVICE->lastResponse, field_index, &field_size);
+
+  result = strstr(aux_ptr, str);
+
+  return (result != NULL);
+}
+
+/**
+ * @brief
+ *
+ * @return int16_t
+ */
+int16_t ATCore_get_first_qird_value() {
+  char *aux_ptr;
+  int16_t result;
+  uint16_t field_size;
+
+  aux_ptr = Parser_get_str_field(AT_DEVICE->lastResponse, 0, &field_size);
+
+  result = Parser_get_first_qird_value(aux_ptr);
+
+  return result;
+}
+
+/**
+ * @brief
+ *
+ */
+void ATCore_set_data_mode() { AT_DEVICE->data_mode = true; }
 
 /* ---------------------- Private functions definition ---------------------- */

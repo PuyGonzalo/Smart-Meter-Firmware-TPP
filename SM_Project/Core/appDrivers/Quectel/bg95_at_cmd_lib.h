@@ -48,20 +48,14 @@ enum {
                  */
   CMD_AT_CEREG, /* EPS network registration status: enable or disable +CEREG urc
                  */
-  CMD_AT_CGEREP,   /* Packet domain event reporting: enable or disable +CGEV urc
-                    */
-  CMD_AT_CGEV,     /* EPS bearer indication status */
-  CMD_AT_CSQ,      /* Signal quality */
-  CMD_AT_CGDCONT,  /* Define PDP context */
-  CMD_AT_CGACT,    /* PDP context activate or deactivate */
-  CMD_AT_CGDATA,   /* Enter Data state */
-  CMD_AT_CGAUTH,   /* Define PDP context authentication parameters */
-  CMD_AT_CGPADDR,  /* Show PDP Address */
-  CMD_AT_CPSMS,    /* Power Saving Mode setting */
-  CMD_AT_CEDRXS,   /* eDRX settings */
-  CMD_AT_CEDRXP,   /* eDRX URC */
-  CMD_AT_CEDRXRDP, /* eDRX Read Dynamic Parameters */
-  CMD_AT_CSIM,     /* Sim Generic Access */
+  CMD_AT_CGEREP,  /* Packet domain event reporting: enable or disable +CGEV urc
+                   */
+  CMD_AT_CGEV,    /* EPS bearer indication status */
+  CMD_AT_CSQ,     /* Signal quality */
+  CMD_AT_CGDCONT, /* Define PDP context */
+  CMD_AT_CGACT,   /* PDP context activate or deactivate */
+  CMD_AT_CGDATA,  /* Enter Data state */
+  CMD_AT_CGPADDR, /* Show PDP Address */
 
   /* V.25TER commands */
   CMD_ATD,  /* Dial */
@@ -73,8 +67,6 @@ enum {
   CMD_AT_AND_W, /* Store current Parameters to User defined profile */
   CMD_AT_AND_D, /* Set DTR function mode */
   CMD_ATX,      /* CONNECT Result code and monitor call progress */
-  CMD_ATZ,      /* Set all current parameters to user defined profile */
-  CMD_AT_GSN,   /* Request product serial number identification */
   CMD_AT_IPR,   /* Fixed DTE rate */
   CMD_AT_IFC,   /* set DTE-DCE local flow control */
 
@@ -90,11 +82,12 @@ enum {
 
   /* Other commands */
   CMD_AT_QICFG,
-
 };
 
 static const char AT_RESPONSE_OK[] = "\r\nOK\r\n";
+static const char AT_RESPONSE_SEND_OK[] = "\r\nSEND OK\r\n";
 static const char AT_RESPONSE_ERR[] = "\r\nERROR\r\n";
 static const char AT_RESPONSE_ERR_CME[] = "\r\n+CME ERROR:";
+static const char AT_RESPONSE_QI[] = "+QI";
 
 #endif  // _BG95_AT_CMD_LIB_H_
