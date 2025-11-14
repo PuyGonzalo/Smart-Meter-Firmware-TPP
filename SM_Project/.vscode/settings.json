@@ -20,5 +20,5 @@
     "--fallback-style=none"
   ],
   "editor.formatOnSave": true,
-  "cortex-debug.variableUseNaturalFormat": false
+  "cortex-debug.variableUseNaturalFormat": true
 }

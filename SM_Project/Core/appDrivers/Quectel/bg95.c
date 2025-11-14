@@ -22,6 +22,7 @@
 const bg95_driver_t BG95_Driver = {
     .init = &BG95_init,
     .send_command = &BG95_send_command,
+    .send_data = &BG95_send_raw_data,
     .is_response_ready = &BG95_is_response_ready,
     .process_response = &BG95_process_rx,
     .quick_check_response = &BG95_quick_check_response,
@@ -34,6 +35,7 @@ const bg95_driver_t BG95_Driver = {
 static void _enable_lvl_shifter(BG95_t *bg95);
 static void _disable_lvl_shifter(BG95_t *bg95);
 static bg95_status_t _BG95_check_response(BG95_t *bg95);
+static bg95_status_t _BG95_process_data(BG95_t *bg95);
 static void _BG95_set_last_response(BG95_t *bg95, uint16_t size);
 
 /* -------------------------------- Callbacks ------------------------------- */
@@ -51,7 +53,7 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
     return;
   }
 
-  bg95->rx_size += rx_size;
+  bg95->rx_size = rx_size;
   bg95->responseReady = true;
 
   /*Sometimes, BG95 sends '\0' character before the message*/
@@ -62,12 +64,12 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
 
   HAL_UART_DMAStop(bg95->huart);
 
-  // if (bg95->data_mode) {
-  //   HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart,
-  //                                ((uint8_t *)bg95->rxBuffer) + rx_size,
-  //                                BG95_RX_BUFFER_SIZE - rx_size);
-  //   bg95->data_mode = false;
-  // }
+  if (bg95->data_mode) {
+    if (bg95->rxBuffer[rx_size - 2] == '>') {
+      bg95->data_send_rdy = true;
+      bg95->data_mode = false;
+    }
+  }
 }
 
 /* ----------------------- Public functions definition ---------------------- */
@@ -113,6 +115,8 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
   bg95->txBuffer[cmd_size] = '\0';
   bg95->responseReady = false;
 
+  __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
+
   /** TODO: Esto moverlo a la funcion de power-on el día de mañana */
   _enable_lvl_shifter(bg95);
 
@@ -134,22 +138,77 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
  * @brief
  *
  * @param bg95
+ * @param data
+ * @param data_size
+ * @return bg95_status_t
+ */
+bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data,
+                                 uint16_t data_size) {
+  if (bg95 == NULL || data == NULL) return BG95_ERROR_NULL_POINTER;
+
+  if (data_size > BG95_TX_BUFFER_SIZE) return BG95_ERROR_WRONG_PARAMS;
+
+  bg95->responseReady = false;
+  bg95->data_send_rdy = false;
+
+  __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
+
+  /** TODO: Esto moverlo a la funcion de power-on el día de mañana */
+  _enable_lvl_shifter(bg95);
+
+  if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
+                                    BG95_RX_BUFFER_SIZE)) != HAL_OK) {
+    HAL_UART_DMAStop(bg95->huart);
+    return BG95_SEND_CMD_ERROR;
+  }
+
+  if ((HAL_UART_Transmit(bg95->huart, data, data_size, HAL_MAX_DELAY)) !=
+      HAL_OK) {
+    return BG95_SEND_CMD_ERROR;
+  }
+
+  return BG95_OK;
+}
+
+/**
+ * @brief
+ *
+ * @param bg95
  * @retval true
  * @retval false
  */
 bool BG95_process_rx(BG95_t *bg95) {
   if (!bg95->responseReady) return false;
 
-  if (_BG95_check_response(bg95) != BG95_OK) return false;
+  if (!bg95->data_mode) {
+    if (_BG95_check_response(bg95) != BG95_OK) return false;
 
-  _BG95_set_last_response(bg95, bg95->rx_size);
+    _BG95_set_last_response(bg95, bg95->rx_size);
+
+    _disable_lvl_shifter(bg95);
+    bg95->responseReady = false;
+    bg95->rx_size = 0;
+    return true;
+
+  } else {
+    if (_BG95_process_data(bg95) == BG95_OK) {
+      _disable_lvl_shifter(bg95);
+      bg95->responseReady = false;
+      bg95->rx_size = 0;
+      return true;
+    } else {
+      _disable_lvl_shifter(bg95);
+      bg95->responseReady = false;
+      bg95->rx_size = 0;
+      return false;
+    }
+  }
 
   _disable_lvl_shifter(bg95);
-
   bg95->responseReady = false;
   bg95->rx_size = 0;
 
-  return true;
+  return false;
 }
 
 /**
@@ -172,11 +231,14 @@ bg95_status_t BG95_quick_check_response(BG95_t *bg95) {
   } else {
     bg95->responseReady = false;
     bg95->rx_size = 0;
+    _disable_lvl_shifter(bg95);
     return BG95_CMD_RESP_ERROR;
   }
 
   bg95->responseReady = false;
   bg95->rx_size = 0;
+
+  _disable_lvl_shifter(bg95);
 
   return BG95_OK;
 }
@@ -239,14 +301,12 @@ static void _disable_lvl_shifter(BG95_t *bg95) {
 static bg95_status_t _BG95_check_response(BG95_t *bg95) {
   if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
 
-  if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR) != NULL)) {
-    bg95->responseStatus = BG95_RESP_ERROR;
+  if ((strstr(bg95->rxBuffer, AT_RESPONSE_QI) != NULL)) {
+    bg95->responseStatus = BG95_RESP_QI;
   } else if ((strstr(bg95->rxBuffer, AT_RESPONSE_ERR_CME) != NULL)) {
     bg95->responseStatus = BG95_RESP_ERROR_CME;
-  } else if (strstr(bg95->rxBuffer, AT_RESPONSE_QI) != NULL) {
-    bg95->responseStatus = BG95_RESP_ERROR_CME;
-  } else if (strstr(bg95->rxBuffer, AT_RESPONSE_SEND_OK) != NULL) {
-    bg95->responseStatus = BG95_RESP_SEND_OK;
+  } else if (strstr(bg95->rxBuffer, AT_RESPONSE_ERR) != NULL) {
+    bg95->responseStatus = BG95_RESP_ERROR;
   } else if (strstr(bg95->rxBuffer, AT_RESPONSE_OK) != NULL) {
     bg95->responseStatus = BG95_RESP_OK;
   }
@@ -255,7 +315,37 @@ static bg95_status_t _BG95_check_response(BG95_t *bg95) {
 }
 
 /**
- * @brief Set the last response message (cleaned) and count its fields.<br><br>
+ * @brief
+ *
+ * @param bg95
+ * @return bg95_status_t
+ */
+static bg95_status_t _BG95_process_data(BG95_t *bg95) {
+  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
+
+  const char *p = strstr(bg95->rxBuffer, "+QIRD:");
+
+  if (!p) return BG95_CMD_RESP_ERROR;  // not found
+
+  p += 6;                               // skip "+QIRD:"
+  while (*p == ' ' || *p == '\t') p++;  // skip spaces if any
+
+  char *end;
+  uint32_t value = strtol(p, &end, 10);
+
+  if (end == p) return BG95_CMD_RESP_ERROR;  // no digits found
+
+  memcpy(bg95->lastResponse, end + 2, value);
+  bg95->last_response_size = value;
+  bg95->last_response_fields = 1;
+  bg95->data_mode = false;
+
+  return BG95_OK;
+}
+
+/**
+ * @brief Set the last response message (cleaned) and count its
+ * fields.<br><br>
  *
  * Removes:<br>
  * - Leading \r\n<br>
@@ -288,7 +378,7 @@ static void _BG95_set_last_response(BG95_t *bg95, uint16_t size) {
     aux_ptr = strstr(start, AT_RESPONSE_ERR);
   } else if (bg95->responseStatus == BG95_RESP_ERROR_CME) {
     aux_ptr = end - 2; /* In this case I only need to discard the las \r\n */
-  } else if (bg95->responseStatus == BG95_RESP_EXTRA) {
+  } else if (bg95->responseStatus == BG95_RESP_QI) {
     aux_ptr = end - 2; /* In this case I only need to discard the las \r\n */
   }
 
@@ -305,12 +395,14 @@ static void _BG95_set_last_response(BG95_t *bg95, uint16_t size) {
 
   uint16_t fields = 0;
 
-  for (char *p = bg95->lastResponse; *p; ++p) {
-    if (p[0] == '\r' && p[1] == '\n') {
-      fields++;
-      p++;
+  if (bg95->responseStatus != BG95_RESP_QI) {
+    for (char *p = bg95->lastResponse; *p; ++p) {
+      if (p[0] == '\r' && p[1] == '\n') {
+        fields++;
+        p++;
+      }
     }
-  }
 
-  bg95->last_response_fields = fields;
+    bg95->last_response_fields = fields;
+  }
 }

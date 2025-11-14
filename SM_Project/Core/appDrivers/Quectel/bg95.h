@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "stm32l0xx_hal.h"
 #include "bg95_at_cmd_lib.h"
@@ -43,7 +44,7 @@ typedef enum {
 typedef enum {
   BG95_RESP_OK = 0,
   BG95_RESP_SEND_OK,
-  BG95_RESP_EXTRA,
+  BG95_RESP_QI,
   BG95_RESP_ERROR,
   BG95_RESP_ERROR_CME,
   BG95_RESP_NOT_RECEIVED,
@@ -76,6 +77,7 @@ typedef struct {
   bool responseReady; /** */
   bg95_resp_status_t responseStatus; /** */
   bool data_mode; /** */
+  bool data_send_rdy; /** */
 
   BG95_Pin_t lvl_shifter_pin; /** */
 
@@ -88,6 +90,7 @@ typedef struct {
 typedef struct {
   void (*init) (BG95_t *bg95, UART_HandleTypeDef *huart); /** */
   bg95_status_t (*send_command)(BG95_t *device, const char *cmd, uint16_t cmd_size); /** */
+  bg95_status_t (*send_data)(BG95_t *device, const uint8_t *data, uint16_t data_size); /** */
   bool (*is_response_ready)(BG95_t *bg95);
   bool (*process_response)(BG95_t *bg95);
   bg95_status_t (*quick_check_response)(BG95_t *bg95);
@@ -99,6 +102,7 @@ typedef struct {
 
 void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart);
 bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd, uint16_t cmd_size);
+bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data, uint16_t data_size);
 bool BG95_process_rx(BG95_t *bg95);
 bg95_status_t BG95_quick_check_response(BG95_t *bg95);
 bool BG95_is_response_ready(BG95_t *bg95);

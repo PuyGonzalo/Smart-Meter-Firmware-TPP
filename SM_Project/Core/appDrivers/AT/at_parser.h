@@ -39,7 +39,7 @@
 #define MAX_ENV_SIZE 128
 
 /* ---------------------- Public functions declaration ---------------------- */
-char *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size);
+uint8_t *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size);
 bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
 bool Parser_fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info);
 bool fParse_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
@@ -62,7 +62,7 @@ void fCmdBuild_ATQIDEACT(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQISEND(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc);
 /** @} */
 

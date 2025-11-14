@@ -71,7 +71,8 @@ typedef struct {
   uint8_t msg_type;
   uint8_t device_id[DEV_ID_BYTES];
   uint32_t seq;
-  uint32_t timestamp; //! TODO: En el informe tenemos que es de 64 bits. VER...
+  uint32_t timestamp_high;
+  uint32_t timestamp_low;
   uint8_t mac[MAC_BYTES];
 } envelope_t;
 

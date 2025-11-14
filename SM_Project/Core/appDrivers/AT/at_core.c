@@ -85,7 +85,7 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT_QICLOSE, "+QICLOSE", 8, fCmdBuild_ATQICLOSE},
     {CMD_AT_QISTATE, "+QISTATE", 8, fCmdBuild_ATQISTATE},
     {CMD_AT_QIRD, "+QIRD", 5, fCmdBuild_ATQIRD},
-    {CMD_AT_QISENDEX, "+QISENDEX", 9, fCmdBuild_ATQISENDEX},
+    {CMD_AT_QISEND, "+QISEND", 7, fCmdBuild_ATQISEND},
 
     /* Other */
     {CMD_AT_QICFG, "+QICFG", 6, NULL},
@@ -169,6 +169,18 @@ bool ATCore_compare_device_id(uint8_t *dev_id) {
 /**
  * @brief
  *
+ * @return uint8_t*
+ */
+void ATCore_get_device_id(uint8_t *dev_id_cpy) {
+  // memcpy(dev_id_cpy, at_core.device_id, DEV_ID_BYTES);
+  for (uint8_t i = 0; i < DEV_ID_BYTES; ++i) {
+    dev_id_cpy[i] = at_core.device_id[i];
+  }
+}
+
+/**
+ * @brief
+ *
  * @param dev_mac
  */
 void ATCore_set_device_mac(uint8_t *dev_mac) {
@@ -195,6 +207,17 @@ bool ATCore_compare_device_mac(uint8_t *dev_mac) {
   }
 
   return result;
+}
+
+/**
+ * @brief
+ *
+ * @return uint8_t*
+ */
+void ATCore_get_device_mac(uint8_t *mac_cpy) {
+  for (uint8_t i = 0; i < MAC_BYTES; ++i) {
+    mac_cpy[i] = at_core.device_mac[i];
+  }
 }
 
 /**
@@ -243,6 +266,17 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
   return result;
 }
 
+bool ATCore_send_data(uint8_t *data, uint16_t data_size) {
+  uint8_t ret;
+  bool result;
+
+  ret = AT_DRV->send_data(AT_DEVICE, data, data_size);
+
+  result = (ret == 0);
+
+  return result;
+}
+
 /**
  * @brief
  *
@@ -250,6 +284,14 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
  * @retval false
  */
 bool ATCore_is_response_ready() { return AT_DRV->is_response_ready(AT_DEVICE); }
+
+/**
+ * @brief
+ *
+ * @retval true
+ * @retval false
+ */
+bool ATCore_is_send_ready() { return AT_DEVICE->data_send_rdy; }
 
 uint8_t ATCore_check_response() {
   return AT_DRV->quick_check_response(AT_DEVICE);
@@ -277,7 +319,16 @@ uint8_t ATCore_get_response_status() {
  *
  * @return char*
  */
-char *ATCore_get_last_response() { return AT_DRV->get_response(AT_DEVICE); }
+bool ATCore_get_last_response(char *copy, uint16_t copy_size,
+                              uint16_t *response_size) {
+  if (copy == NULL || response_size == NULL) return false;
+  if (copy_size != BG95_RX_BUFFER_SIZE) return false;
+
+  *response_size = AT_DEVICE->last_response_size;
+  memcpy(copy, AT_DRV->get_response(AT_DEVICE), AT_DEVICE->last_response_size);
+
+  return true;
+}
 
 /**
  * @brief

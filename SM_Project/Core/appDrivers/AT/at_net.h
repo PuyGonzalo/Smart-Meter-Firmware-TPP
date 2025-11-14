@@ -29,7 +29,7 @@
 #define HES_MSG_TYPE_ACK                   0xFF /** */
 
 #define BG95_CONTEXT_ID 1
-#define BG95_CONNECT_ID 0
+#define BG95_CONNECT_ID 2
 #define BG95_BACKDOOR_PORT 6565
 #define BG95_ACCESS_MODE 0
 #define BG95_QICLOSE_DFLT_TIMEOUT 10

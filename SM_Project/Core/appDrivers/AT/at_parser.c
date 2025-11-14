@@ -16,7 +16,7 @@
 
 #include "at_device.h"
 
-char envelope[MAX_ENV_SIZE];
+uint8_t envelope[MAX_ENV_SIZE];
 
 /* ---------------------- Private functions declaration --------------------- */
 
@@ -33,6 +33,8 @@ static void _bytes_to_hexstr(const uint8_t *src, uint16_t len, char *dst);
 
 static char *next_token(const char **str);
 
+static uint8_t _count_decimal_digits(uint32_t n);
+
 /* ----------------------- Public functions definition ---------------------- */
 
 /**
@@ -42,33 +44,49 @@ static char *next_token(const char **str);
  * @param size
  * @return char*
  */
-char *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size) {
+uint8_t *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size) {
   if (!envp || !size) return NULL;
 
-  char *p = envelope;
   uint16_t total_len = 0;
 
   /* Version */
-  total_len += sprintf(p + total_len, "%02X", envp->version);
+  envelope[ENV_VERSION_OFFSET] = envp->version;
+  total_len += ENV_VERSION_BYTES;
 
   /* Msg Type */
-  total_len += sprintf(p + total_len, "%02X", envp->msg_type);
+  envelope[ENV_MSGTYPE_OFFSET] = envp->msg_type;
+  total_len += ENV_MSGTYPE_BYTES;
 
   /* Device ID */
-  _bytes_to_hexstr(envp->device_id, sizeof(envp->device_id), p + total_len);
-  total_len += sizeof(envp->device_id) * 2;
+  memcpy((envelope + ENV_DEVID_OFFSET), envp->device_id, ENV_DEVID_BYTES);
+  total_len += ENV_DEVID_BYTES;
 
   /* SEQ */
-  total_len += sprintf(p + total_len, "%08lX", envp->seq);
+  for (uint8_t i = 0; i < ENV_SEQ_BYTES; ++i) {
+    envelope[ENV_SEQ_OFFSET + i] = (envp->seq >> (8 * (3 - i))) & 0xFF;
+  }
+  total_len += ENV_SEQ_BYTES;
 
   /* Timestamp */
-  total_len += sprintf(p + total_len, "%016lX", envp->timestamp); /*"%016lX"*/
+  uint8_t timestamp_BD2 = ENV_TIMESTAMP_BYTES >> 1;
+
+  for (uint8_t i = 0; i < timestamp_BD2; ++i) {
+    envelope[ENV_TIMESTAMP_OFFSET + i] =
+        (envp->timestamp_high >> (8 * (3 - i))) & 0xFF;
+  }
+
+  uint8_t timestamp_low_offset = ENV_TIMESTAMP_OFFSET + timestamp_BD2;
+
+  for (uint8_t i = 0; i < timestamp_BD2; ++i) {
+    envelope[timestamp_low_offset + i] =
+        (envp->timestamp_low >> (8 * (3 - i))) & 0xFF;
+  }
+  total_len += ENV_TIMESTAMP_BYTES;
 
   /* MAC */
-  _bytes_to_hexstr(envp->mac, sizeof(envp->mac), p + total_len);
-  total_len += sizeof(envp->mac) * 2;
+  memcpy((envelope + ENV_MAC_OFFSET), envp->mac, ENV_MAC_BYTES);
+  total_len += ENV_MAC_BYTES;
 
-  envelope[total_len] = '\0';
   *size = total_len;
 
   return envelope;
@@ -99,39 +117,45 @@ bool Parser_fParse_Envelope(char *envp, uint16_t envp_size,
                             envelope_t *envp_info) {
   if (envp_info == NULL || envp == NULL) return false;
 
-  char str_aux[envp_size];
-  char *endptr;
-
   /* Obtain Version */
-  _get_str_slice(envp, envp_size, ENV_VERSION_OFFSET, ENV_VERSION_BYTES,
-                 str_aux, envp_size);
-  envp_info->version = (uint8_t)strtoul(str_aux, &endptr, 10);
+  envp_info->version = *(envp + ENV_VERSION_OFFSET);
+  // memcpy((envp + ENV_VERSION_OFFSET), &envp_info->version,
+  // ENV_VERSION_BYTES);
 
   /* Obtain Msg Type */
-  _get_str_slice(envp, envp_size, ENV_MSGTYPE_OFFSET, ENV_MSGTYPE_BYTES,
-                 str_aux, envp_size);
-  envp_info->msg_type = (uint8_t)strtoul(str_aux, &endptr, 10);
+  envp_info->msg_type = *(envp + ENV_MSGTYPE_OFFSET);
+  // memcpy((envp + ENV_MSGTYPE_OFFSET), &envp_info->msg_type,
+  // ENV_MSGTYPE_BYTES);
 
   /* Obtain Dev ID */
-  _get_str_slice(envp, envp_size, ENV_DEVID_OFFSET, ENV_DEVID_BYTES, str_aux,
-                 envp_size);
-  _hexstr_to_bytes(str_aux, (ENV_DEVID_BYTES * 2), envp_info->device_id,
-                   ENV_DEVID_BYTES);
+  memcpy(envp_info->device_id, (envp + ENV_DEVID_OFFSET), ENV_DEVID_BYTES);
 
   /* Obtain Seq */
-  _get_str_slice(envp, envp_size, ENV_DEVID_OFFSET, ENV_SEQ_BYTES, str_aux,
-                 envp_size);
-  envp_info->seq = (uint32_t)strtoul(str_aux, &endptr, 10);
+  envp_info->seq = 0;
+
+  for (uint8_t i = 0; i < ENV_SEQ_BYTES; i++) {
+    envp_info->seq = (envp_info->seq << 8) | (uint8_t)envp[ENV_SEQ_OFFSET + i];
+  }
 
   /* Obtain Timestamp */
-  _get_str_slice(envp, envp_size, ENV_TIMESTAMP_OFFSET, ENV_TIMESTAMP_BYTES,
-                 str_aux, envp_size);
-  envp_info->timestamp = (uint32_t)strtoul(str_aux, &endptr, 10);
+  envp_info->timestamp_high = 0;
+  uint8_t timestamp_BD2 = ENV_TIMESTAMP_BYTES >> 1;
+
+  for (uint8_t i = 0; i < timestamp_BD2; i++) {
+    envp_info->timestamp_high = (envp_info->timestamp_high << 8) |
+                                (uint8_t)envp[ENV_TIMESTAMP_OFFSET + i];
+  }
+
+  envp_info->timestamp_low = 0;
+
+  for (uint8_t i = 0; i < timestamp_BD2; i++) {
+    envp_info->timestamp_low =
+        (envp_info->timestamp_low << 8) |
+        (uint8_t)envp[ENV_TIMESTAMP_OFFSET + timestamp_BD2 + i];
+  }
 
   /* Obtain MAC Tag */
-  _get_str_slice(envp, envp_size, ENV_MAC_OFFSET, ENV_MAC_BYTES, str_aux,
-                 envp_size);
-  _hexstr_to_bytes(str_aux, (ENV_MAC_BYTES * 2), envp_info->mac, ENV_MAC_BYTES);
+  memcpy(envp_info->mac, (envp + ENV_MAC_OFFSET), ENV_MAC_BYTES);
 
   return true;
 }
@@ -218,8 +242,11 @@ uint32_t Parser_calculate_cmd_size(const char *cmd_string,
   if (has_params) size += 1; /* '=' */
 
   /* Int params: Each number converted to string + coma */
-  for (uint8_t i = 0; i < desc->nb_num_params; i++)
-    size += 10 + 1; /* up to 10 digits per number + ',' */
+  for (uint8_t i = 0; i < desc->nb_num_params; i++) {
+    size += _count_decimal_digits(desc->num_params[i]);
+    if ((i < desc->nb_num_params - 1) || (desc->nb_str_params > 0))
+      size += 1; /* comma only if not last or if there are string params */
+  }
 
   /* Strings params: str_params with delimiter '%' */
   if (desc->nb_str_params > 0 && strlen(desc->str_params) > 0) {
@@ -536,7 +563,7 @@ void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc) {
  * @param cmd_string
  * @param atcmd_desc
  */
-void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc) {
+void fCmdBuild_ATQISEND(atcmd_desc_t *atcmd_desc) {
   if (atcmd_desc == NULL) return;
 
   if (atcmd_desc->cmd_mode == AT_CMD_TEST) {
@@ -546,10 +573,10 @@ void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc) {
     atcmd_desc->nb_str_params = 0;
     atcmd_desc->total_params = 0;
   } else if (atcmd_desc->cmd_mode == AT_CMD_WRITE) {
-    atcmd_desc->nb_num_params = 1;
-    atcmd_desc->nb_str_params = 1;
+    atcmd_desc->nb_num_params = 2;
+    atcmd_desc->nb_str_params = 0;
     atcmd_desc->param_types[0] = AT_PARAM_NUM;
-    atcmd_desc->param_types[1] = AT_PARAM_STR;
+    atcmd_desc->param_types[1] = AT_PARAM_NUM;
     atcmd_desc->total_params = 2;
   }
 }
@@ -712,4 +739,18 @@ static char *next_token(const char **str) {
   *str = (*start == '%') ? start + 1 : start;
 
   return token;
+}
+
+static uint8_t _count_decimal_digits(uint32_t n) {
+  if (n < 10) return 1;
+  if (n < 100) return 2;
+  if (n < 1000) return 3;
+  if (n < 10000) return 4;
+  if (n < 100000) return 5;
+  if (n < 1000000) return 6;
+  if (n < 10000000) return 7;
+  if (n < 100000000) return 8;
+  if (n < 1000000000) return 9;
+
+  return 10;
 }
