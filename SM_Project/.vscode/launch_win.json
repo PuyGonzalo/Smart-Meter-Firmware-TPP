@@ -1,0 +1,86 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug w/ ST-Link",
+      "cwd": "${workspaceFolder}",
+      "type": "cortex-debug",
+      "executable": "${workspaceFolder}/build/Debug/Smart-Meter-FW-TPP.elf",
+      "request": "launch",
+      "servertype": "stlink",
+      "device": "STM32L031K6Tx",
+      "interface": "swd",
+      "runToEntryPoint": "main",
+      "svdFile": "C:\\ST\\STM32CubeCLT_1.19.0\\STMicroelectronics_CMSIS_SVD\\STM32L0x1.svd",
+      "v1": false,
+      "serverpath": "C:\\ST\\STM32CubeCLT_1.19.0\\STLink-gdb-server\\bin\\ST-LINK_gdbserver.exe",
+      "stm32cubeprogrammer": "C:\\ST\\STM32CubeCLT_1.19.0\\STM32CubeProgrammer\\bin",
+      "stlinkPath": "C:\\ST\\STM32CubeCLT_1.19.0\\STLink-gdb-server\\bin\\ST-LINK_gdbserver.exe",
+      "armToolchainPath": "ODO C:\\ST\\STM32CubeCLT_1.19.0\\GNU-tools-for-STM32\\bin",
+      "gdbPath": "C:\\ST\\STM32CubeCLT_1.19.0\\GNU-tools-for-STM32\\bin\\arm-none-eabi-gdb.exe",
+      "serverArgs": [
+        "-m",
+        "0",
+        "-r",
+        "15",
+        "-t",
+        "-e",
+        "--frequency",
+        "4000"
+      ],
+      "overrideLaunchCommands": [
+        "-target-download",
+        "monitor halt"
+      ],
+      "preLaunchTask": "Build + Flash"
+    },
+    {
+      "name": "Attach w/ ST-Link",
+      "cwd": "${workspaceFolder}",
+      "type": "cortex-debug",
+      "executable": "${workspaceFolder}/build/Debug/Smart-Meter-FW-TPP.elf",
+      "request": "attach",
+      "servertype": "stlink",
+      "device": "STM32L031K6Tx",
+      "interface": "swd",
+      "runToEntryPoint": "main",
+      "svdFile": "C:\\ST\\STM32CubeCLT_1.19.0\\STMicroelectronics_CMSIS_SVD\\STM32L0x1.svd",
+      "v1": false,
+      "serverpath": "C:\\ST\\STM32CubeCLT_1.19.0\\STLink-gdb-server\\bin\\ST-LINK_gdbserver.exe",
+      "stm32cubeprogrammer": "C:\\ST\\STM32CubeCLT_1.19.0\\STM32CubeProgrammer\\bin",
+      "stlinkPath": "C:\\ST\\STM32CubeCLT_1.19.0\\STLink-gdb-server\\bin\\ST-LINK_gdbserver.exe",
+      "armToolchainPath": "C:\\ST\\STM32CubeCLT_1.19.0\\GNU-tools-for-STM32\\bin",
+      "gdbPath": "C:\\ST\\STM32CubeCLT_1.19.0\\GNU-tools-for-STM32\\bin\\arm-none-eabi-gdb.exe",
+      "serverArgs": [
+        "-m",
+        "1",
+        "-r",
+        "15",
+        "-t",
+        "-e",
+        "--frequency",
+        "4000"
+      ]
+    },
+    {
+      "name": "OpenOCD (Windows)",
+      "cwd": "${workspaceFolder}",
+      "type": "cortex-debug",
+      "executable": "${workspaceFolder}/build/Debug/Smart-Meter-FW-TPP.elf",
+      "request": "launch",
+      "servertype": "openocd",
+      "serverpath": "C:\\ST\\STM32CubeIDE_1.13.2\\plugins\\com.st.stm32cube.ide.mcu.externaltools.openocd.win64_2.4.100.202501161620\\tools\\bin\\openocd.exe",
+      "configFiles": [
+        "SM-FW-TPP.cfg"
+      ],
+      "serverArgs": [
+        "-s",
+        "C:\\ST\\STM32CubeIDE_1.13.2\\plugins\\com.st.stm32cube.ide.mcu.debug.openocd_2.3.100.202501240831\\resources\\openocd\\st_scripts",
+        "-d2"
+      ],
+      "device": "STM32L031K6Tx",
+      "runToEntryPoint": "main",
+      "svdFile": "C:\\ST\\STM32CubeCLT_1.19.0\\STMicroelectronics_CMSIS_SVD\\STM32L0x1.svd"
+    }
+  ]
+}
