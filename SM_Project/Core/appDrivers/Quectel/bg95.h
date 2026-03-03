@@ -21,7 +21,7 @@
 #include "bg95_at_cmd_lib.h"
 
 #define BG95_RX_BUFFER_SIZE 512
-#define BG95_TX_BUFFER_SIZE 128
+#define BG95_TX_BUFFER_SIZE 300
 #define ENA_LVL_SHIFTER_Pin GPIO_PIN_0
 #define ENA_LVL_SHIFTER_GPIO_Port GPIOB
 

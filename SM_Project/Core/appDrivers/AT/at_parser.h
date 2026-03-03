@@ -39,7 +39,7 @@
 #define MAX_ENV_SIZE 128
 
 /* ---------------------- Public functions declaration ---------------------- */
-uint8_t *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size);
+const uint8_t *Parser_fBuild_Envelope(const envelope_t *envp, uint16_t *size);
 bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
 bool Parser_fParse_Envelope(char *envp, uint16_t envp_size, envelope_t *envp_info);
 bool fParse_Envelope_w_payload(envelope_t *envp, char *payload, uint16_t payload_size);
@@ -49,6 +49,7 @@ uint32_t Parser_calculate_cmd_size(const char *cmd_string,
                                            const atcmd_desc_t *desc);
 char *Parser_get_str_field(char *str, uint16_t field_index, uint16_t *field_len);
 int16_t Parser_get_first_qird_value(const char *resp);
+void Parser_bytes_to_hex(const uint8_t *data, uint16_t len, char *hex_out);
 
 /* ----------------- Build AT Commands Function declaration ----------------- */
 /**
@@ -63,6 +64,7 @@ void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQISEND(atcmd_desc_t *atcmd_desc);
+void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc);
 void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc);
 /** @} */
 

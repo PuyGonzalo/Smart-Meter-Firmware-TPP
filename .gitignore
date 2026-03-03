@@ -63,3 +63,7 @@ SM_Project/.clangd
 SM_Project/.settings/bundles-lock.store.json
 SM_Project/.settings/bundles.store.json
 SM_Project/.settings/ide.store.json
+
+# Claude Code
+.claude/
+CLAUDE.md

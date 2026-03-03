@@ -79,6 +79,7 @@ enum {
   CMD_AT_QISTATE,
   CMD_AT_QIRD,
   CMD_AT_QISEND,
+  CMD_AT_QISENDEX,
 
   /* Other commands */
   CMD_AT_QICFG,

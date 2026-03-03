@@ -19,7 +19,7 @@
 #include "bg95_at_cmd_lib.h"
 
 #define ATCMD_MAX_PARAM_SIZE 10
-#define ATCMD_MAX_STRPARAM_SIZE 128
+#define ATCMD_MAX_STRPARAM_SIZE 260
 #define DEV_ID_BYTES 16
 #define MAC_BYTES 16
 

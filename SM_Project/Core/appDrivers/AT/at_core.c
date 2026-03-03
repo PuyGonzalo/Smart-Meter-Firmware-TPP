@@ -86,6 +86,7 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT_QISTATE, "+QISTATE", 8, fCmdBuild_ATQISTATE},
     {CMD_AT_QIRD, "+QIRD", 5, fCmdBuild_ATQIRD},
     {CMD_AT_QISEND, "+QISEND", 7, fCmdBuild_ATQISEND},
+    {CMD_AT_QISENDEX, "+QISENDEX", 10, fCmdBuild_ATQISENDEX},
 
     /* Other */
     {CMD_AT_QICFG, "+QICFG", 6, NULL},
@@ -233,7 +234,7 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
 
   if (cmd->id >= SIZE_ATCMD_BG95_LUT) return false;
 
-  uint16_t command_max_size = 128;
+  uint16_t command_max_size = BG95_TX_BUFFER_SIZE;
   char command[command_max_size];
   uint32_t cmd_size_aux = 0;
 
@@ -266,7 +267,7 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
   return result;
 }
 
-bool ATCore_send_data(uint8_t *data, uint16_t data_size) {
+bool ATCore_send_data(const uint8_t *data, uint16_t data_size) {
   uint8_t ret;
   bool result;
 
@@ -374,5 +375,10 @@ int16_t ATCore_get_first_qird_value() {
  *
  */
 void ATCore_set_data_mode() { AT_DEVICE->data_mode = true; }
+
+void ATCore_clear_data_mode() {
+  AT_DEVICE->data_mode = false;
+  AT_DEVICE->data_send_rdy = false;
+}
 
 /* ---------------------- Private functions definition ---------------------- */
