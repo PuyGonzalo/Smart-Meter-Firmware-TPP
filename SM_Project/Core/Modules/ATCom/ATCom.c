@@ -104,8 +104,8 @@ static void handle_failure(void) {
   udp_process.pdp_context_ready = false;
   udp_process.retry_count = 0;
 
-  // Clear modem driver state in case we were mid-data-transfer
-  ATCore_clear_data_mode();
+  // Stop DMA, clear all RX flags and buffer
+  ATCore_reset_rx();
 
   register_process.failure_count++;
 

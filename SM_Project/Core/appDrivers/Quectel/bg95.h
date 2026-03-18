@@ -97,6 +97,7 @@ typedef struct {
   uint8_t (*get_response_status)(BG95_t *bg95);
   char* (*get_response)(BG95_t *bg95); /** */
   void (*rx_callback)(BG95_t *device, uint16_t rx_size); /** */
+  void (*reset_rx)(BG95_t *bg95); /** */
 } bg95_driver_t;
 
 
@@ -109,5 +110,6 @@ bool BG95_is_response_ready(BG95_t *bg95);
 uint8_t BG95_get_response_status(BG95_t *bg95);
 char* BG95_get_last_response(BG95_t *bg95);
 void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size);
+void BG95_reset_rx(BG95_t *bg95);
 
 #endif

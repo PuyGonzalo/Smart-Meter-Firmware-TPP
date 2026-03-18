@@ -376,9 +376,6 @@ int16_t ATCore_get_first_qird_value() {
  */
 void ATCore_set_data_mode() { AT_DEVICE->data_mode = true; }
 
-void ATCore_clear_data_mode() {
-  AT_DEVICE->data_mode = false;
-  AT_DEVICE->data_send_rdy = false;
-}
+void ATCore_reset_rx() { AT_DRV->reset_rx(AT_DEVICE); }
 
 /* ---------------------- Private functions definition ---------------------- */

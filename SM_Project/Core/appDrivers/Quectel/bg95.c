@@ -28,7 +28,8 @@ const bg95_driver_t BG95_Driver = {
     .quick_check_response = &BG95_quick_check_response,
     .get_response_status = &BG95_get_response_status,
     .get_response = &BG95_get_last_response,
-    .rx_callback = &BG95_rxcplt_callback};
+    .rx_callback = &BG95_rxcplt_callback,
+    .reset_rx = &BG95_reset_rx};
 
 /* ---------------------- Private functions declaration --------------------- */
 
@@ -54,7 +55,6 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
   }
 
   bg95->rx_size = rx_size;
-  bg95->responseReady = true;
 
   /*Sometimes, BG95 sends '\0' character before the message*/
   /*This is problematic for strstr function usage.*/
@@ -65,10 +65,19 @@ void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
   HAL_UART_DMAStop(bg95->huart);
 
   if (bg95->data_mode) {
-    if (bg95->rxBuffer[rx_size - 2] == '>') {
-      bg95->data_send_rdy = true;
-      bg95->data_mode = false;
+    bool prompt_found = false;
+    for (uint16_t i = 0; i < rx_size; i++) {
+      if (bg95->rxBuffer[i] == '>') {
+        prompt_found = true;
+        bg95->data_send_rdy = true;
+        bg95->data_mode = false;
+
+        break;
+      }
     }
+    if (prompt_found) return;
+  } else {
+    bg95->responseReady = true;
   }
 }
 
@@ -273,6 +282,24 @@ char *BG95_get_last_response(BG95_t *bg95) {
   if (bg95 == NULL) return NULL;
 
   return bg95->lastResponse;
+}
+
+/**
+ * @brief Abort any pending DMA reception and reset all RX state.
+ *        Call this on error/timeout before restarting the FSM.
+ */
+void BG95_reset_rx(BG95_t *bg95) {
+  if (bg95 == NULL) return;
+
+  HAL_UART_DMAStop(bg95->huart);
+
+  bg95->responseReady = false;
+  bg95->responseStatus = BG95_RESP_NOT_RECEIVED;
+  bg95->data_mode = false;
+  bg95->data_send_rdy = false;
+  bg95->rx_size = 0;
+
+  memset(bg95->rxBuffer, 0, BG95_RX_BUFFER_SIZE);
 }
 
 /* ----------------------- Private function definition ---------------------- */

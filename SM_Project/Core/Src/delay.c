@@ -11,68 +11,95 @@
 
 #include "delay.h"
 
-#include <stdio.h>
-
 static Delay_t delay_timers[MAX_TIMERS];
-static bool any_timer_running;
-static uint32_t num_timers;
+static bool timer_allocated[MAX_TIMERS];
+static uint32_t num_allocated;
 
 /**
- * @brief delay_init Initialize the non-blocking delay
- * @warning This delay assumes that you are using SysTick as a system timebase
- * source
- *          .<br>
- *          Also assumes that it is used with a configure 1ms tick.<br>
- *          If this is not the case, it's mandatory to configure SysTick in this
- *          delay_init() function.
- *
+ * @brief Initialize delay system
  */
-void delay_init() {
-  num_timers = 0;
-  any_timer_running = false;
+void delay_init(void) {
+  num_allocated = 0;
 
-  /* Add SysTick initialization and config if needed.*/
+  for (uint32_t i = 0; i < MAX_TIMERS; i++) {
+    timer_allocated[i] = false;
+    delay_timers[i].is_running = false;
+    delay_timers[i].start_time = 0;
+    delay_timers[i].duration_ms = 0;
+  }
 }
 
 /**
- * @brief delay_timer_create Creates a timer used for non-blocking delay.
- * @return Timer index.
+ * @brief Create a new timer
+ * @return Timer index (0 to MAX_TIMERS-1) or -1 on error
  */
 int32_t delay_timer_create(void) {
-  if (num_timers >= MAX_TIMERS) return -1;
+  if (num_allocated >= MAX_TIMERS) {
+    return -1;  // No slots available
+  }
 
-  delay_timers[num_timers].delay_counter = 0;
-  delay_timers[num_timers].is_running = false;
+  // Find first free slot
+  for (uint32_t i = 0; i < MAX_TIMERS; i++) {
+    if (!timer_allocated[i]) {
+      timer_allocated[i] = true;
+      delay_timers[i].is_running = false;
+      delay_timers[i].start_time = 0;
+      delay_timers[i].duration_ms = 0;
+      num_allocated++;
+      return (int32_t)i;
+    }
+  }
 
-  return num_timers++;
+  return -1;  // Should never reach here
 }
 
 /**
- * @brief delay_start Stars a delay given by milliseconds.
- * @param timer_idx Timer index of the desire timer.
- * @param milliseconds Duration of the desire delay in milli seconds (ms).
+ * @brief Destroy a timer and free its slot
+ * @param timer_idx Timer index to destroy
  */
-void delay_start(uint32_t timer_idx, uint32_t milliseconds) {
-  if (timer_idx >= MAX_TIMERS) return;
+void delay_timer_destroy(int32_t timer_idx) {
+  if (timer_idx < 0 || timer_idx >= MAX_TIMERS) return;
+  if (!timer_allocated[timer_idx]) return;
 
-  delay_timers[timer_idx].delay_counter = milliseconds;
+  timer_allocated[timer_idx] = false;
+  delay_timers[timer_idx].is_running = false;
+
+  if (num_allocated > 0) {
+    num_allocated--;
+  }
+}
+
+/**
+ * @brief Start a delay timer
+ * @param timer_idx Timer index
+ * @param milliseconds Duration in milliseconds
+ */
+void delay_start(int32_t timer_idx, uint32_t milliseconds) {
+  if (timer_idx < 0 || timer_idx >= MAX_TIMERS) return;
+  if (!timer_allocated[timer_idx]) return;
+
+  delay_timers[timer_idx].start_time = HAL_GetTick();
+  delay_timers[timer_idx].duration_ms = milliseconds;
   delay_timers[timer_idx].is_running = true;
-  any_timer_running = true;
 }
 
 /**
- * @brief delay_has_finished Checks if delay time seted it's elapsed.
- * @param timer_idx Timer index of the desire timer.
- * @retval True if delay time elapsed
- * @retval False in case time it is not elapsed yet or no delay is active.
+ * @brief Check if delay has finished
+ * @param timer_idx Timer index
+ * @return true if delay finished, false otherwise
+ *
+ * @note Handles HAL_GetTick() overflow correctly
  */
-bool delay_has_finished(uint32_t timer_idx) {
-  if (timer_idx >= num_timers) return false;
-  if (!any_timer_running) return false;
+bool delay_has_finished(int32_t timer_idx) {
+  if (timer_idx < 0 || timer_idx >= MAX_TIMERS) return false;
+  if (!timer_allocated[timer_idx]) return false;
+  if (!delay_timers[timer_idx].is_running) return false;
 
-  uint32_t counter = delay_timers[timer_idx].delay_counter;
+  // Calculate elapsed time (handles overflow correctly)
+  uint32_t current = HAL_GetTick();
+  uint32_t elapsed = current - delay_timers[timer_idx].start_time;
 
-  if (counter == 0) {
+  if (elapsed >= delay_timers[timer_idx].duration_ms) {
     delay_timers[timer_idx].is_running = false;
     return true;
   }
@@ -81,20 +108,45 @@ bool delay_has_finished(uint32_t timer_idx) {
 }
 
 /**
- * @brief delay_update Delay timers update callback.
- * @warning This function must be called every 1 ms (SysTick interrupt).
+ * @brief Stop a running timer
+ * @param timer_idx Timer index
  */
-void delay_update(void) {
-  if (!any_timer_running) return;
+void delay_stop(int32_t timer_idx) {
+  if (timer_idx < 0 || timer_idx >= MAX_TIMERS) return;
+  if (!timer_allocated[timer_idx]) return;
 
-  any_timer_running = false;
+  delay_timers[timer_idx].is_running = false;
+}
 
-  for (uint32_t i = 0; i < num_timers; i++) {
-    if (delay_timers[i].is_running && delay_timers[i].delay_counter > 0) {
-      delay_timers[i].delay_counter--;
-      any_timer_running = true;
-    } else if (delay_timers[i].delay_counter == 0) {
-      delay_timers[i].is_running = false;
-    }
+/**
+ * @brief Get elapsed time since timer started
+ * @param timer_idx Timer index
+ * @return Elapsed time in milliseconds, or 0 if timer not running
+ */
+uint32_t delay_elapsed(int32_t timer_idx) {
+  if (timer_idx < 0 || timer_idx >= MAX_TIMERS) return 0;
+  if (!timer_allocated[timer_idx]) return 0;
+  if (!delay_timers[timer_idx].is_running) return 0;
+
+  uint32_t current = HAL_GetTick();
+  return current - delay_timers[timer_idx].start_time;
+}
+
+/**
+ * @brief Get remaining time until timer expires
+ * @param timer_idx Timer index
+ * @return Remaining time in milliseconds, or 0 if expired/not running
+ */
+uint32_t delay_remaining(int32_t timer_idx) {
+  if (timer_idx < 0 || timer_idx >= MAX_TIMERS) return 0;
+  if (!timer_allocated[timer_idx]) return 0;
+  if (!delay_timers[timer_idx].is_running) return 0;
+
+  uint32_t elapsed = delay_elapsed(timer_idx);
+
+  if (elapsed >= delay_timers[timer_idx].duration_ms) {
+    return 0;
   }
+
+  return delay_timers[timer_idx].duration_ms - elapsed;
 }

@@ -102,7 +102,7 @@ int main(void) {
   /* USER CODE BEGIN 2 */
   delay_init();
   ATCore_init(&huart2);
-
+  Com_Init();
   /*Creo delay para comandos at*/
   at_command_delay = delay_timer_create();
 
