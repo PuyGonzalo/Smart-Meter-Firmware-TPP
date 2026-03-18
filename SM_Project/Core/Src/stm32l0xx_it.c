@@ -18,13 +18,12 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32l0xx_it.h"
-
 #include "main.h"
-
+#include "stm32l0xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "delay.h"
+#include "pulse_counter.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -66,12 +65,13 @@ extern UART_HandleTypeDef huart2;
 /* USER CODE END EV */
 
 /******************************************************************************/
-/*           Cortex-M0+ Processor Interruption and Exception Handlers */
+/*           Cortex-M0+ Processor Interruption and Exception Handlers          */
 /******************************************************************************/
 /**
- * @brief This function handles Non maskable Interrupt.
- */
-void NMI_Handler(void) {
+  * @brief This function handles Non maskable Interrupt.
+  */
+void NMI_Handler(void)
+{
   /* USER CODE BEGIN NonMaskableInt_IRQn 0 */
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
@@ -82,22 +82,25 @@ void NMI_Handler(void) {
 }
 
 /**
- * @brief This function handles Hard fault interrupt.
- */
-void HardFault_Handler(void) {
+  * @brief This function handles Hard fault interrupt.
+  */
+void HardFault_Handler(void)
+{
   /* USER CODE BEGIN HardFault_IRQn 0 */
 
   /* USER CODE END HardFault_IRQn 0 */
-  while (1) {
+  while (1)
+  {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
     /* USER CODE END W1_HardFault_IRQn 0 */
   }
 }
 
 /**
- * @brief This function handles System service call via SWI instruction.
- */
-void SVC_Handler(void) {
+  * @brief This function handles System service call via SWI instruction.
+  */
+void SVC_Handler(void)
+{
   /* USER CODE BEGIN SVC_IRQn 0 */
 
   /* USER CODE END SVC_IRQn 0 */
@@ -107,9 +110,10 @@ void SVC_Handler(void) {
 }
 
 /**
- * @brief This function handles Pendable request for system service.
- */
-void PendSV_Handler(void) {
+  * @brief This function handles Pendable request for system service.
+  */
+void PendSV_Handler(void)
+{
   /* USER CODE BEGIN PendSV_IRQn 0 */
 
   /* USER CODE END PendSV_IRQn 0 */
@@ -119,9 +123,10 @@ void PendSV_Handler(void) {
 }
 
 /**
- * @brief This function handles System tick timer.
- */
-void SysTick_Handler(void) {
+  * @brief This function handles System tick timer.
+  */
+void SysTick_Handler(void)
+{
   /* USER CODE BEGIN SysTick_IRQn 0 */
 
   /* USER CODE END SysTick_IRQn 0 */
@@ -139,10 +144,24 @@ void SysTick_Handler(void) {
 /******************************************************************************/
 
 /**
- * @brief This function handles DMA1 channel 4, channel 5, channel 6 and channel
- * 7 interrupts.
- */
-void DMA1_Channel4_5_6_7_IRQHandler(void) {
+  * @brief This function handles EXTI line 4 to 15 interrupts.
+  */
+void EXTI4_15_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI4_15_IRQn 0 */
+
+  /* USER CODE END EXTI4_15_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(PULSE_INPUT_Pin);
+  /* USER CODE BEGIN EXTI4_15_IRQn 1 */
+
+  /* USER CODE END EXTI4_15_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 channel 4, channel 5, channel 6 and channel 7 interrupts.
+  */
+void DMA1_Channel4_5_6_7_IRQHandler(void)
+{
   /* USER CODE BEGIN DMA1_Channel4_5_6_7_IRQn 0 */
 
   /* USER CODE END DMA1_Channel4_5_6_7_IRQn 0 */
@@ -153,10 +172,10 @@ void DMA1_Channel4_5_6_7_IRQHandler(void) {
 }
 
 /**
- * @brief This function handles USART2 global interrupt / USART2 wake-up
- * interrupt through EXTI line 26.
- */
-void USART2_IRQHandler(void) {
+  * @brief This function handles USART2 global interrupt / USART2 wake-up interrupt through EXTI line 26.
+  */
+void USART2_IRQHandler(void)
+{
   /* USER CODE BEGIN USART2_IRQn 0 */
 
   /* USER CODE END USART2_IRQn 0 */
@@ -167,10 +186,10 @@ void USART2_IRQHandler(void) {
 }
 
 /**
- * @brief This function handles LPUART1 global interrupt / LPUART1 wake-up
- * interrupt through EXTI line 28.
- */
-void LPUART1_IRQHandler(void) {
+  * @brief This function handles LPUART1 global interrupt / LPUART1 wake-up interrupt through EXTI line 28.
+  */
+void LPUART1_IRQHandler(void)
+{
   /* USER CODE BEGIN LPUART1_IRQn 0 */
 
   /* USER CODE END LPUART1_IRQn 0 */
@@ -181,5 +200,11 @@ void LPUART1_IRQHandler(void) {
 }
 
 /* USER CODE BEGIN 1 */
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+  if (GPIO_Pin == PULSE_INPUT_Pin) {
+    PulseCounter_irq_handler();
+  }
+}
 
 /* USER CODE END 1 */

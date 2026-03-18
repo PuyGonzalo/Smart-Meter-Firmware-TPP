@@ -59,6 +59,9 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define ENA_LVL_SHIFTER_Pin GPIO_PIN_0
 #define ENA_LVL_SHIFTER_GPIO_Port GPIOB
+#define PULSE_INPUT_Pin GPIO_PIN_8
+#define PULSE_INPUT_GPIO_Port GPIOA
+#define PULSE_INPUT_EXTI_IRQn EXTI4_15_IRQn
 
 /* USER CODE BEGIN Private defines */
 

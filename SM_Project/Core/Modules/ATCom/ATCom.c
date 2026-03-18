@@ -19,6 +19,7 @@
 #include "at_parser.h"
 #include "bg95_at_cmd_lib.h"
 #include "delay.h"
+#include "rtc.h"
 #include "stm32l0xx_hal.h"
 #include "stm32l0xx_hal_def.h"
 
