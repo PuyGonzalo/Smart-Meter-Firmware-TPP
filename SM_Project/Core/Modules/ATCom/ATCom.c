@@ -408,6 +408,7 @@ int Com_UDP_context_process() {
   if (udp_process.state_timeout_timer >= 0) {
     if (delay_has_finished(udp_process.state_timeout_timer)) {
       switch (udp_process.current_state) {
+        case COM_UDP_QIACT_CHECK:
         case COM_UDP_QIACT_WAIT:
         case COM_UDP_QIOPEN_WAIT:
           // Timeout - treat as failure
@@ -428,6 +429,36 @@ int Com_UDP_context_process() {
     /* --------------------------------------------------------- */
     case COM_UDP_IDLE: {
       if (!udp_process.pdp_context_ready) {
+        // Query PDP context status first (AT+QIACT?)
+        cmd.id = CMD_AT_QIACT;
+        cmd.cmd_mode = AT_CMD_READ;
+        if (ATCore_send_cmd(&cmd)) {
+          delay_start(udp_process.state_timeout_timer, TIMEOUT_QIACT);
+          udp_process.current_state = COM_UDP_QIACT_CHECK;
+        }
+      } else {
+        // Already have PDP context, just need to open socket
+        udp_process.current_state = COM_UDP_QIOPEN_SEND;
+      }
+      break;
+    }
+
+    /* --------------------------------------------------------- */
+    case COM_UDP_QIACT_CHECK: {
+      if (!ATCore_is_response_ready()) break;
+
+      ATCore_process_response();
+      delay_stop(udp_process.state_timeout_timer);
+
+      uint8_t status = ATCore_get_response_status();
+      if (status == BG95_RESP_QI) {
+        // AT+QIACT? returned +QIACT data -> PDP context already active
+        udp_process.pdp_context_ready = true;
+        udp_process.retry_count = 0;
+        udp_process.current_state = COM_UDP_QIOPEN_SEND;
+        printf("PDP context already active.\r\n");
+      } else if (status == BG95_RESP_OK) {
+        // AT+QIACT? returned OK with no data -> need to activate
         cmd.id = CMD_AT_QIACT;
         cmd.cmd_mode = AT_CMD_WRITE_DEFAULT;
         if (ATCore_send_cmd(&cmd)) {
@@ -435,8 +466,13 @@ int Com_UDP_context_process() {
           udp_process.current_state = COM_UDP_QIACT_WAIT;
         }
       } else {
-        // Already have PDP context, just need to open socket
-        udp_process.current_state = COM_UDP_QIOPEN_SEND;
+        // Error querying - retry or fail
+        if (udp_process.retry_count < udp_process.max_retries) {
+          udp_process.retry_count++;
+          udp_process.current_state = COM_UDP_IDLE;
+        } else {
+          udp_process.current_state = COM_UDP_PROCESS_ERROR;
+        }
       }
       break;
     }

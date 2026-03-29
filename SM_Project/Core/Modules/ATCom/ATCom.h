@@ -47,6 +47,7 @@ typedef struct {
 typedef enum {
   COM_UDP_IDLE = 0,
   COM_UDP_PROCESS_DONE = 1,
+  COM_UDP_QIACT_CHECK,
   COM_UDP_QIACT_WAIT,
   COM_UDP_QIOPEN_SEND,
   COM_UDP_QIOPEN_WAIT,
