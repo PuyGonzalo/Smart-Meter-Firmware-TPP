@@ -20,6 +20,7 @@
 #include "bg95_at_cmd_lib.h"
 #include "delay.h"
 #include "rtc.h"
+#include "storage.h"
 #include "stm32l0xx_hal.h"
 #include "stm32l0xx_hal_def.h"
 
@@ -181,6 +182,11 @@ void Com_register_device_process(void) {
   switch (register_process.current_state) {
     /* --------------------------------------------------------- */
     case COM_REG_INIT: {
+      if (Storage_is_registered()) {
+        printf("Skipping registration — credentials loaded from EEPROM.\r\n");
+        register_process.current_state = COM_REG_FINISHED;
+        break;
+      }
       if (is_device_connected) {
         delay_start(register_process.state_timeout_timer, TIMEOUT_INIT);
         register_process.current_state = COM_REG_UDP_CTX;
@@ -334,6 +340,7 @@ void Com_register_device_process(void) {
       if (rx_env.msg_type == 3) {
         ATCore_set_device_id(rx_env.device_id);
         ATCore_set_device_mac(rx_env.mac);
+        Storage_save_credentials(rx_env.device_id, rx_env.mac);
         envp.seq = rx_env.seq + 1;
 
         delay_start(register_process.state_timeout_timer,
@@ -456,7 +463,6 @@ int Com_UDP_context_process() {
         udp_process.pdp_context_ready = true;
         udp_process.retry_count = 0;
         udp_process.current_state = COM_UDP_QIOPEN_SEND;
-        printf("PDP context already active.\r\n");
       } else if (status == BG95_RESP_OK) {
         // AT+QIACT? returned OK with no data -> need to activate
         cmd.id = CMD_AT_QIACT;

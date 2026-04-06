@@ -52,6 +52,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/appDrivers/AT/at_parser.c
     Core/Modules/ATCom/ATCom.c
     Core/Modules/PulseCounter/pulse_counter.c
+    Core/Modules/Storage/storage.c
     Core/Src/delay.c
 )
 
@@ -62,6 +63,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Core/appDrivers/Quectel/
     Core/Modules/ATCom/
     Core/Modules/PulseCounter/
+    Core/Modules/Storage/
     Core/Inc
 )
 

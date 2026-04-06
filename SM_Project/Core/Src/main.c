@@ -31,6 +31,7 @@
 #include "ATCom.h"
 #include "delay.h"
 #include "printf_retarget.h"
+#include "storage.h"
 
 /* USER CODE END Includes */
 
@@ -105,6 +106,18 @@ int main(void)
   delay_init();
   ATCore_init(&huart2);
   Com_Init();
+  Storage_init();
+
+  /* Load credentials from EEPROM if device was previously registered */
+  if (Storage_is_registered()) {
+    uint8_t dev_id[DEV_ID_BYTES];
+    uint8_t mac[MAC_BYTES];
+    Storage_load_credentials(dev_id, mac);
+    ATCore_set_device_id(dev_id);
+    ATCore_set_device_mac(mac);
+    printf("Device already registered. Credentials loaded from EEPROM.\r\n");
+  }
+
   /*Creo delay para comandos at*/
   at_command_delay = delay_timer_create();
 
