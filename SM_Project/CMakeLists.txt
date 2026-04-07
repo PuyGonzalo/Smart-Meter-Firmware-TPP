@@ -53,6 +53,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Modules/ATCom/ATCom.c
     Core/Modules/PulseCounter/pulse_counter.c
     Core/Modules/Storage/storage.c
+    Core/Modules/Payload/rlp.c
     Core/Src/delay.c
 )
 
@@ -64,6 +65,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Modules/ATCom/
     Core/Modules/PulseCounter/
     Core/Modules/Storage/
+    Core/Modules/Payload/
     Core/Inc
 )
 

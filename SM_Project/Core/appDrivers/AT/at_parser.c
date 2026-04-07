@@ -95,17 +95,45 @@ const uint8_t *Parser_fBuild_Envelope(const envelope_t *envp_info,
 }
 
 /**
- * @brief
+ * @brief Build a complete message: header(30) + payload(N) + MAC(16).
  *
- * @param envp
- * @param payload
- * @param payload_size
- * @return true
- * @return false
+ * Internally calls Parser_fBuild_Envelope() to build the header and MAC,
+ * then shifts the MAC right to insert the payload between them.
+ *
+ * @param envp          Envelope struct with header fields and MAC.
+ * @param payload       Payload bytes (e.g., RLP-encoded OBIS data). May be NULL if payload_size is 0.
+ * @param payload_size  Payload length in bytes.
+ * @param total_size    Output: total message size (30 + payload_size + 16).
+ * @retval Pointer to static internal buffer with the assembled message.
+ * @retval NULL on error (invalid params or message exceeds MAX_ENV_SIZE).
  */
-bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload,
-                               uint16_t payload_size) {
-  return true;
+const uint8_t *Parser_fBuild_Envelope_w_payload(const envelope_t *envp,
+                                                 const uint8_t *payload,
+                                                 uint16_t payload_size,
+                                                 uint16_t *total_size) {
+  if (!envp || !total_size) return NULL;
+
+  uint16_t total = ENV_MAC_OFFSET + payload_size + ENV_MAC_BYTES;
+  if (total > MAX_ENV_SIZE) return NULL;
+
+  /* Build header(30) + MAC(16) into raw_envelope using existing function */
+  uint16_t base_size;
+  if (!Parser_fBuild_Envelope(envp, &base_size)) return NULL;
+
+  /* raw_envelope now has: [header(30)][MAC(16)]
+   * We need:              [header(30)][payload(N)][MAC(16)]
+   * Shift MAC to make room for payload */
+  if (payload_size > 0) {
+    memmove(raw_envelope + ENV_MAC_OFFSET + payload_size,
+            raw_envelope + ENV_MAC_OFFSET, ENV_MAC_BYTES);
+
+    if (payload) {
+      memcpy(raw_envelope + ENV_MAC_OFFSET, payload, payload_size);
+    }
+  }
+
+  *total_size = total;
+  return raw_envelope;
 }
 
 /**
@@ -163,16 +191,45 @@ bool Parser_fParse_Envelope(char *envp, uint16_t envp_size,
 }
 
 /**
- * @brief
+ * @brief Parse a complete message: header(30) + payload(N) + MAC(16).
  *
- * @param envp
- * @param payload
- * @param payload_size
- * @return true
- * @return false
+ * Extracts envelope fields from the header, provides a pointer into the
+ * payload region, and reads the MAC from the end of the message.
+ *
+ * @param data             Raw message bytes received via QIRD.
+ * @param data_size        Total message length.
+ * @param envp_info        Output: parsed envelope fields.
+ * @param payload_out      Output: pointer to payload start within data buffer.
+ *                         NULL-safe: pass NULL if payload is not needed.
+ * @param payload_size_out Output: payload length in bytes.
+ *                         NULL-safe: pass NULL if not needed.
+ * @retval true   Message parsed successfully.
+ * @retval false  Message too short or invalid.
  */
-bool fParse_Envelope_w_payload(envelope_t *envp, char *payload,
-                               uint16_t payload_size) {
+bool Parser_fParse_Envelope_w_payload(const uint8_t *data, uint16_t data_size,
+                                       envelope_t *envp_info,
+                                       const uint8_t **payload_out,
+                                       uint16_t *payload_size_out) {
+  if (!data || !envp_info) return false;
+  if (data_size < ENV_MAC_OFFSET + ENV_MAC_BYTES) return false;
+
+  /* Parse header fields (version, msg_type, device_id, seq, timestamp).
+   * Parser_fParse_Envelope reads MAC from offset 30, which is wrong when
+   * there is a payload. We fix the MAC below. */
+  if (!Parser_fParse_Envelope((char *)data, data_size, envp_info))
+    return false;
+
+  uint16_t payload_size = data_size - ENV_MAC_OFFSET - ENV_MAC_BYTES;
+
+  /* Fix MAC: read from the actual end of the message */
+  if (payload_size > 0) {
+    memcpy(envp_info->mac, data + ENV_MAC_OFFSET + payload_size, ENV_MAC_BYTES);
+  }
+  /* If payload_size == 0, MAC is already at offset 30 (correct) */
+
+  if (payload_out) *payload_out = data + ENV_MAC_OFFSET;
+  if (payload_size_out) *payload_size_out = payload_size;
+
   return true;
 }
 
