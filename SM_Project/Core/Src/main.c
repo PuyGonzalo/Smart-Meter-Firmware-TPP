@@ -42,6 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define REGISTRATION_TIMEOUT_MS  120000  /* Max time for device registration (2 min) */
 
 /* Uncomment to wipe EEPROM on boot (forces re-registration) */
 // #define DEBUG_ERASE_EEPROM
@@ -129,6 +130,14 @@ int main(void)
   at_command_delay = delay_timer_create();
 
   HAL_Delay(5000);
+
+  /* Run registration to completion (blocking) */
+  if (!Storage_is_registered()) {
+    Com_register_device_blocking(REGISTRATION_TIMEOUT_MS);
+  }
+
+  /* Start periodic session */
+  Com_session_start();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -138,7 +147,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    Com_register_device_process();
+    Com_session_process();
   }
   /* USER CODE END 3 */
 }
