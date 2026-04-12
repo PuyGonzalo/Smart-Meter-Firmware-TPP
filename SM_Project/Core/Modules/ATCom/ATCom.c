@@ -23,6 +23,9 @@
 #include "storage.h"
 #include "stm32l0xx_hal.h"
 #include "stm32l0xx_hal_def.h"
+#include "pulse_counter.h"
+#include "rlp.h"
+#include "rtc.h"
 
 /* ============================================================================
  * DEBUG CONFIGURATION - Comment out for production values
