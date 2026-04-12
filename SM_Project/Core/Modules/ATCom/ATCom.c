@@ -70,11 +70,30 @@ static envelope_t envp = {
 };
 static uint16_t envp_size = 0;
 
+static session_fsm_t session = {.current_state = COM_SES_IDLE,
+                                .after_send_ok = COM_SES_WAIT_DATA,
+                                .failure_count = 0,
+                                .needs_hard_reset = false,
+                                .seq = 0,
+                                .state_timeout_timer = -1,
+                                .state_delay_timer = -1,
+                                .error_backoff_timer = -1};
+
+/* Buffer for session payload building */
+static uint8_t ses_payload_buf[96];
+static uint16_t ses_payload_len = 0;
+
 /* External variables */
 bool is_device_connected = true;
 
 /* Private function prototypes */
 static void handle_failure(void);
+static void session_handle_failure(void);
+static bool session_send_envelope(uint8_t msg_type, const uint8_t *payload,
+                                   uint16_t payload_size);
+static uint16_t session_build_read_response(const uint8_t *req_payload,
+                                             uint16_t req_len,
+                                             uint8_t *out, uint16_t out_cap);
 
 /**
  * @brief Initialize Communication Module
@@ -86,9 +105,14 @@ void Com_Init(void) {
   register_process.error_backoff_timer = delay_timer_create();
   udp_process.state_timeout_timer = delay_timer_create();
 
+  session.state_timeout_timer = delay_timer_create();
+  session.state_delay_timer = delay_timer_create();
+  session.error_backoff_timer = delay_timer_create();
+
   // Initialize states
   register_process.current_state = COM_REG_INIT;
   udp_process.current_state = COM_UDP_IDLE;
+  session.current_state = COM_SES_IDLE;
 }
 
 /**
@@ -558,4 +582,382 @@ int Com_UDP_context_process() {
   }
 
   return udp_process.current_state;
+}
+
+/* ============================================================================
+ * Session FSM — Periodic data exchange with HES
+ * ============================================================================
+ */
+
+/**
+ * @brief Handle session failure: stop timers, reset UDP, exponential backoff
+ */
+static void session_handle_failure(void) {
+  delay_stop(session.state_timeout_timer);
+  delay_stop(session.state_delay_timer);
+
+  udp_process.current_state = COM_UDP_IDLE;
+  udp_process.pdp_context_ready = false;
+  udp_process.retry_count = 0;
+
+  ATCore_reset_rx();
+
+  session.failure_count++;
+
+  if (session.failure_count >= MAX_FAILURES_HARD_RESET) {
+    session.needs_hard_reset = true;
+    session.current_state = COM_SES_ERROR;
+    return;
+  }
+
+  uint32_t backoff = RESTART_DELAY_BASE_MS * (1 << session.failure_count);
+  if (backoff > RESTART_DELAY_MAX_MS) backoff = RESTART_DELAY_MAX_MS;
+
+  delay_start(session.error_backoff_timer, backoff);
+  session.current_state = COM_SES_RESTART_WAIT;
+}
+
+/**
+ * @brief Build and send an envelope via QISENDEX
+ * @param msg_type  Message type for the envelope
+ * @param payload   Payload data (NULL for header-only envelopes)
+ * @param payload_size  Size of payload (0 for header-only)
+ * @return true if command was sent successfully
+ */
+static bool session_send_envelope(uint8_t msg_type, const uint8_t *payload,
+                                   uint16_t payload_size) {
+  envelope_t env;
+  env.version = 1;
+  env.msg_type = msg_type;
+  ATCore_get_device_id(env.device_id);
+  ATCore_get_device_mac(env.mac);
+  env.seq = session.seq++;
+
+  uint32_t ts_hi, ts_lo;
+  RTC_get_timestamp(&ts_hi, &ts_lo);
+  env.timestamp_high = ts_hi;
+  env.timestamp_low = ts_lo;
+
+  uint16_t total_size;
+  const uint8_t *raw;
+
+  if (payload != NULL && payload_size > 0) {
+    raw = Parser_fBuild_Envelope_w_payload(&env, payload, payload_size,
+                                            &total_size);
+  } else {
+    raw = Parser_fBuild_Envelope(&env, &total_size);
+  }
+
+  if (raw == NULL) return false;
+
+  atcmd_desc_t cmd = (atcmd_desc_t)ATCMD_DESC_DEFAULT;
+  cmd.id = CMD_AT_QISENDEX;
+  cmd.cmd_mode = AT_CMD_WRITE;
+  cmd.num_params[0] = BG95_CONNECT_ID;
+  Parser_bytes_to_hex(raw, total_size, cmd.str_params);
+  cmd.str_params[total_size * 2] = '\0';
+
+  return ATCore_send_cmd(&cmd);
+}
+
+/**
+ * @brief Build an RLP-encoded read response from a read request payload
+ *
+ * Request payload: RLP list [ op_code(0x00), obis_code_string ]
+ * Response payload: RLP list [ op_code(0x00), obis_code_string, value ]
+ *
+ * Supported OBIS codes:
+ *  - "1.0.1" → water volume (uint64, litres)
+ *  - "0.9.4" → current timestamp (uint64)
+ *
+ * @param req_payload  RLP-encoded request payload
+ * @param req_len      Length of request payload
+ * @param out          Output buffer for response payload
+ * @param out_cap      Capacity of output buffer
+ * @return Size of encoded response, or 0 on error
+ */
+static uint16_t session_build_read_response(const uint8_t *req_payload,
+                                             uint16_t req_len,
+                                             uint8_t *out, uint16_t out_cap) {
+  rlp_reader_t r;
+  rlp_reader_init(&r, req_payload, req_len);
+
+  rlp_reader_t list_r;
+  if (!rlp_enter_list(&r, &list_r)) return 0;
+
+  uint8_t op_code;
+  if (!rlp_decode_uint8(&list_r, &op_code)) return 0;
+  if (op_code != OBIS_OP_READ) return 0;
+
+  char obis_code[16];
+  uint16_t obis_len;
+  if (!rlp_decode_string(&list_r, obis_code, sizeof(obis_code), &obis_len))
+    return 0;
+
+  /* Build response */
+  rlp_writer_t w;
+  rlp_writer_init(&w, out, out_cap);
+
+  uint16_t bm = rlp_list_begin(&w);
+  rlp_encode_uint8(&w, OBIS_OP_READ);
+  rlp_encode_string(&w, obis_code);
+
+  if (strcmp(obis_code, "1.0.1") == 0) {
+    /* Water consumption in litres */
+    uint64_t volume = (uint64_t)PulseCounter_get_volume_liters();
+    rlp_encode_uint64(&w, volume);
+  } else if (strcmp(obis_code, "0.9.4") == 0) {
+    /* Current timestamp */
+    uint32_t ts_hi, ts_lo;
+    RTC_get_timestamp(&ts_hi, &ts_lo);
+    uint64_t ts = ((uint64_t)ts_hi << 32) | ts_lo;
+    rlp_encode_uint64(&w, ts);
+  } else {
+    /* Unknown OBIS code — cannot respond */
+    return 0;
+  }
+
+  rlp_list_end(&w, bm);
+
+  if (!rlp_writer_ok(&w)) return 0;
+  return rlp_writer_len(&w);
+}
+
+/**
+ * @brief Start a new periodic session
+ */
+void Com_session_start(void) {
+  session.current_state = COM_SES_UDP_CTX;
+  session.after_send_ok = COM_SES_WAIT_DATA;
+  session.failure_count = 0;
+  session.needs_hard_reset = false;
+
+  udp_process.current_state = COM_UDP_IDLE;
+  udp_process.pdp_context_ready = false;
+  udp_process.retry_count = 0;
+}
+
+/**
+ * @brief Check if the session FSM has completed
+ * @return true if session is done or in error state
+ */
+bool Com_is_session_done(void) {
+  return (session.current_state == COM_SES_DONE ||
+          session.current_state == COM_SES_ERROR);
+}
+
+/**
+ * @brief Main session FSM — call repeatedly from main loop
+ *
+ * Flow: UDP_CTX → SEND_MSG(announce) → WAIT_SEND_OK → WAIT_DATA →
+ *       CHECK_DATA_RDY → READ_DATA → PROCESS_MSG → (respond or done)
+ */
+void Com_session_process(void) {
+  atcmd_desc_t cmd = (atcmd_desc_t)ATCMD_DESC_DEFAULT;
+
+  /* Global timeout check */
+  if (session.state_timeout_timer >= 0 &&
+      session.current_state != COM_SES_IDLE &&
+      session.current_state != COM_SES_DONE &&
+      session.current_state != COM_SES_ERROR) {
+    if (delay_has_finished(session.state_timeout_timer)) {
+      session_handle_failure();
+      return;
+    }
+  }
+
+  switch (session.current_state) {
+    /* --------------------------------------------------------- */
+    case COM_SES_IDLE:
+      /* Waiting for Com_session_start() */
+      break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_UDP_CTX: {
+      int udp_result = Com_UDP_context_process();
+
+      if (udp_result == COM_UDP_PROCESS_DONE) {
+        delay_start(session.state_delay_timer, 1000);
+        delay_stop(session.state_timeout_timer);
+        session.current_state = COM_SES_SEND_MSG;
+      } else if (udp_result == COM_UDP_PROCESS_ERROR) {
+        udp_process.current_state = COM_UDP_IDLE;
+        session_handle_failure();
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_SEND_MSG: {
+      if (!delay_has_finished(session.state_delay_timer)) break;
+
+      /* First message: IP Announce (msg_type 0x04, no payload) */
+      if (session_send_envelope(MSG_TYPE_ANNOUNCE, NULL, 0)) {
+        delay_start(session.state_timeout_timer, TIMEOUT_SEND);
+        session.after_send_ok = COM_SES_WAIT_DATA;
+        session.current_state = COM_SES_WAIT_SEND_OK;
+      } else {
+        session_handle_failure();
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_WAIT_SEND_OK: {
+      if (!ATCore_is_response_ready()) break;
+
+      ATCore_check_response();
+
+      if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
+        delay_stop(session.state_timeout_timer);
+        delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
+        session.current_state = session.after_send_ok;
+      } else {
+        session_handle_failure();
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_WAIT_DATA: {
+      if (!delay_has_finished(session.state_delay_timer)) break;
+      session.current_state = COM_SES_CHECK_DATA_RDY;
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_CHECK_DATA_RDY: {
+      cmd.id = CMD_AT_QIRD;
+      cmd.cmd_mode = AT_CMD_WRITE_OPT;
+      cmd.num_params[0] = BG95_CONNECT_ID;
+      cmd.num_params[1] = 0;
+
+      if (ATCore_send_cmd(&cmd)) {
+        delay_start(session.state_timeout_timer, TIMEOUT_DATA_RDY);
+        session.current_state = COM_SES_WAIT_DATA_RDY;
+      } else {
+        delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
+        session.current_state = COM_SES_WAIT_DATA;
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_WAIT_DATA_RDY: {
+      if (!ATCore_is_response_ready()) break;
+
+      if (!ATCore_process_response()) {
+        delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
+        session.current_state = COM_SES_WAIT_DATA;
+        break;
+      }
+
+      if (ATCore_get_first_qird_value() > 0) {
+        delay_stop(session.state_timeout_timer);
+        session.current_state = COM_SES_READ_DATA;
+      } else {
+        /* No data yet — poll again after delay */
+        delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
+        session.current_state = COM_SES_WAIT_DATA;
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_READ_DATA: {
+      cmd.id = CMD_AT_QIRD;
+      cmd.cmd_mode = AT_CMD_WRITE;
+      cmd.num_params[0] = BG95_CONNECT_ID;
+
+      if (ATCore_send_cmd(&cmd)) {
+        delay_start(session.state_timeout_timer, TIMEOUT_DATA_REQUEST);
+        session.current_state = COM_SES_READ_DATA_WAIT;
+      } else {
+        session_handle_failure();
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_READ_DATA_WAIT: {
+      if (!ATCore_is_response_ready()) break;
+
+      ATCore_set_data_mode();
+
+      if (ATCore_process_response()) {
+        delay_stop(session.state_timeout_timer);
+        session.current_state = COM_SES_PROCESS_MSG;
+      } else {
+        session_handle_failure();
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_PROCESS_MSG: {
+      uint16_t response_size;
+      char buf[BG95_RX_BUFFER_SIZE];
+      envelope_t rx_env;
+
+      ATCore_get_last_response(buf, sizeof(buf), &response_size);
+
+      const uint8_t *payload_ptr = NULL;
+      uint16_t payload_len = 0;
+
+      bool parsed = Parser_fParse_Envelope_w_payload(
+          (const uint8_t *)buf, response_size, &rx_env,
+          &payload_ptr, &payload_len);
+
+      if (!parsed) {
+        session_handle_failure();
+        break;
+      }
+
+      switch (rx_env.msg_type) {
+        case MSG_TYPE_READ_REQUEST: {
+          /* HES requests data — build and send read response */
+          ses_payload_len = session_build_read_response(
+              payload_ptr, payload_len,
+              ses_payload_buf, sizeof(ses_payload_buf));
+
+          if (ses_payload_len == 0) {
+            session_handle_failure();
+            break;
+          }
+
+          if (session_send_envelope(MSG_TYPE_READ_RESPONSE,
+                                     ses_payload_buf, ses_payload_len)) {
+            delay_start(session.state_timeout_timer, TIMEOUT_SEND);
+            session.after_send_ok = COM_SES_WAIT_DATA;
+            session.current_state = COM_SES_WAIT_SEND_OK;
+          } else {
+            session_handle_failure();
+          }
+        } break;
+
+        case MSG_TYPE_ACK: {
+          /* HES acknowledged — session complete */
+          session.failure_count = 0;
+          session.current_state = COM_SES_DONE;
+        } break;
+
+        default: {
+          /* Unexpected message type — treat as failure */
+          session_handle_failure();
+        } break;
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_DONE:
+      /* Terminal state — session completed successfully */
+      break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_ERROR:
+      /* Terminal state — unrecoverable error */
+      break;
+
+    /* --------------------------------------------------------- */
+    case COM_SES_RESTART_WAIT: {
+      if (delay_has_finished(session.error_backoff_timer)) {
+        session.current_state = COM_SES_UDP_CTX;
+        udp_process.current_state = COM_UDP_IDLE;
+        udp_process.pdp_context_ready = false;
+        udp_process.retry_count = 0;
+      }
+    } break;
+  }
 }
