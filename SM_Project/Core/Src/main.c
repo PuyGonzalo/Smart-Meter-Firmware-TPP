@@ -125,7 +125,6 @@ int main(void)
     ATCore_set_device_id(dev_id);
     ATCore_set_device_mac(mac);
     PulseCounter_set_count(Storage_load_pulse_count());
-    printf("Device already registered. Credentials loaded from EEPROM.\r\n");
   }
 
   /*Creo delay para comandos at*/
