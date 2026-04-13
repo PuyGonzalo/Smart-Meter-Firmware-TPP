@@ -31,6 +31,7 @@
 #include "ATCom.h"
 #include "delay.h"
 #include "printf_retarget.h"
+#include "pulse_counter.h"
 #include "storage.h"
 
 /* USER CODE END Includes */
@@ -123,6 +124,7 @@ int main(void)
     Storage_load_credentials(dev_id, mac);
     ATCore_set_device_id(dev_id);
     ATCore_set_device_mac(mac);
+    PulseCounter_set_count(Storage_load_pulse_count());
     printf("Device already registered. Credentials loaded from EEPROM.\r\n");
   }
 

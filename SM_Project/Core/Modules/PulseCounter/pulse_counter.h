@@ -30,6 +30,12 @@ uint32_t PulseCounter_get_volume_liters(void);
 void PulseCounter_reset(void);
 
 /**
+ * @brief  Set the pulse counter to a specific value.
+ *         Used to restore from EEPROM on boot.
+ */
+void PulseCounter_set_count(uint32_t count);
+
+/**
  * @brief  Called from HAL_GPIO_EXTI_Callback when PULSE_INPUT_Pin triggers.
  *         Do NOT call this directly — it is invoked by the ISR path.
  */

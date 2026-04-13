@@ -906,7 +906,21 @@ void Com_session_process(void) {
       }
 
       switch (rx_env.msg_type) {
+        case MSG_TYPE_HANDSHAKE: {
+          /* HES initiates session — respond with handshake response */
+          if (session_send_envelope(MSG_TYPE_HANDSHAKE_RESPONSE, NULL, 0)) {
+            delay_start(session.state_timeout_timer, TIMEOUT_SEND);
+            session.after_send_ok = COM_SES_WAIT_DATA;
+            session.current_state = COM_SES_WAIT_SEND_OK;
+          } else {
+            session_handle_failure();
+          }
+        } break;
+
         case MSG_TYPE_READ_REQUEST: {
+          /* Persist pulse count before sending — survives power loss */
+          Storage_save_pulse_count(PulseCounter_get_count());
+
           /* HES requests data — build and send read response */
           ses_payload_len = session_build_read_response(
               payload_ptr, payload_len,
@@ -928,7 +942,9 @@ void Com_session_process(void) {
         } break;
 
         case MSG_TYPE_ACK: {
-          /* HES acknowledged — session complete */
+          /* HES acknowledged — reset counter and complete session */
+          PulseCounter_reset();
+          Storage_save_pulse_count(0);
           session.failure_count = 0;
           session.current_state = COM_SES_DONE;
         } break;
