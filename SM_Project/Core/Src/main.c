@@ -43,6 +43,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+/* Uncomment to wipe EEPROM on boot (forces re-registration) */
+// #define DEBUG_ERASE_EEPROM
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -107,6 +109,11 @@ int main(void)
   ATCore_init(&huart2);
   Com_Init();
   Storage_init();
+
+#ifdef DEBUG_ERASE_EEPROM
+  Storage_erase_all();
+
+#endif
 
   /* Load credentials from EEPROM if device was previously registered */
   if (Storage_is_registered()) {

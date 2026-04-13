@@ -26,5 +26,6 @@ bool     Storage_save_credentials(const uint8_t *device_id, const uint8_t *mac);
 bool     Storage_load_credentials(uint8_t *device_id, uint8_t *mac);
 bool     Storage_save_pulse_count(uint32_t count);
 uint32_t Storage_load_pulse_count(void);
+bool     Storage_erase_all(void);
 
 #endif //_STORAGE_H_

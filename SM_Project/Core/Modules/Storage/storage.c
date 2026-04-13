@@ -112,3 +112,23 @@ uint32_t Storage_load_pulse_count(void) {
   if (count == 0xFFFFFFFF) return 0;
   return count;
 }
+
+/**
+ * @brief Erase all stored data (magic, credentials, pulse count)
+ */
+bool Storage_erase_all(void) {
+  if (HAL_FLASHEx_DATAEEPROM_Unlock() != HAL_OK) return false;
+
+  /* Write 0xFF to all used bytes (0x00 to 0x27 = 40 bytes) */
+  for (uint16_t i = 0; i < 0x28; i++) {
+    if (HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_BYTE,
+                                        STORAGE_BASE_ADDR + i, 0xFF) != HAL_OK) {
+      HAL_FLASHEx_DATAEEPROM_Lock();
+      return false;
+    }
+  }
+
+  HAL_FLASHEx_DATAEEPROM_Lock();
+  storage_registered = false;
+  return true;
+}
