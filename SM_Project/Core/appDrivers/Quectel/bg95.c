@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "main.h"
 #include "stm32l0xx_hal_def.h"
 #include "stm32l0xx_hal_uart.h"
 #include "stm32l0xx_hal_uart_ex.h"
@@ -103,7 +104,103 @@ void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart) {
 
   bg95->lvl_shifter_pin.GPIOx = ENA_LVL_SHIFTER_GPIO_Port;
   bg95->lvl_shifter_pin.GPIO_Pin = ENA_LVL_SHIFTER_Pin;
-  /// TODO: Agregar en un futuro pines para on/off del módulo.
+
+  bg95->pwrkey_pin.GPIOx = QUECTEL_PWRKEY_GPIO_Port;
+  bg95->pwrkey_pin.GPIO_Pin = QUECTEL_PWRKEY_Pin;
+
+  bg95->status_pin.GPIOx = QUECTEL_STATUS_GPIO_Port;
+  bg95->status_pin.GPIO_Pin = QUECTEL_STATUS_Pin;
+}
+
+/**
+ * @brief Power on the BG95 modem.
+ *
+ * Sequence: enable level shifter → PWRKEY pulse LOW for 600ms →
+ * poll with "AT" until modem responds "OK" or timeout.
+ *
+ * @param bg95 Pointer to BG95 instance
+ * @return BG95_OK if modem is ready, BG95_CMD_RESP_ERROR on timeout
+ */
+bg95_status_t BG95_power_on(BG95_t *bg95) {
+  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
+
+  /* Enable level shifter */
+  _enable_lvl_shifter(bg95);
+  HAL_Delay(10);
+
+  /* PWRKEY pulse: HIGH (idle) → LOW for 600ms → HIGH */
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
+  HAL_Delay(50);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_RESET);
+  HAL_Delay(BG95_PWRKEY_PULSE_MS);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
+
+  /* Poll with "AT\r\n" until modem responds OK */
+  uint32_t start = HAL_GetTick();
+  const char at_cmd[] = "AT\r\n";
+
+  while ((HAL_GetTick() - start) < BG95_BOOT_TIMEOUT_MS) {
+    HAL_Delay(BG95_AT_POLL_INTERVAL_MS);
+
+    BG95_reset_rx(bg95);
+
+    if (BG95_send_command(bg95, at_cmd, strlen(at_cmd)) != BG95_OK) continue;
+
+    /* Wait for response with short timeout */
+    uint32_t resp_start = HAL_GetTick();
+    while (!bg95->responseReady && (HAL_GetTick() - resp_start) < 1000);
+
+    if (bg95->responseReady) {
+      if (strstr(bg95->rxBuffer, "OK") != NULL) {
+        BG95_reset_rx(bg95);
+        return BG95_OK;
+      }
+    }
+  }
+
+  return BG95_CMD_RESP_ERROR;
+}
+
+/**
+ * @brief Power off the BG95 modem.
+ *
+ * Sends AT+QPOWD=1 (normal power down), waits for "POWERED DOWN",
+ * then disables the level shifter.
+ *
+ * @param bg95 Pointer to BG95 instance
+ * @return BG95_OK on success, BG95_CMD_RESP_ERROR on timeout
+ */
+bg95_status_t BG95_power_off(BG95_t *bg95) {
+  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
+
+  BG95_reset_rx(bg95);
+
+  const char qpowd_cmd[] = "AT+QPOWD=1\r\n";
+  if (BG95_send_command(bg95, qpowd_cmd, strlen(qpowd_cmd)) != BG95_OK) {
+    _disable_lvl_shifter(bg95);
+    return BG95_CMD_RESP_ERROR;
+  }
+
+  /* Wait for "POWERED DOWN" URC */
+  uint32_t start = HAL_GetTick();
+  while ((HAL_GetTick() - start) < BG95_POWEROFF_TIMEOUT_MS) {
+    if (bg95->responseReady) {
+      if (strstr(bg95->rxBuffer, "POWERED DOWN") != NULL) {
+        _disable_lvl_shifter(bg95);
+        BG95_reset_rx(bg95);
+        return BG95_OK;
+      }
+      BG95_reset_rx(bg95);
+    }
+    HAL_Delay(100);
+  }
+
+  /* Timeout — disable level shifter anyway */
+  _disable_lvl_shifter(bg95);
+  return BG95_CMD_RESP_ERROR;
 }
 
 /**
@@ -125,9 +222,6 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
   bg95->responseReady = false;
 
   __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
-
-  /** TODO: Esto moverlo a la funcion de power-on el día de mañana */
-  _enable_lvl_shifter(bg95);
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
                                     BG95_RX_BUFFER_SIZE)) != HAL_OK) {
@@ -162,9 +256,6 @@ bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data,
 
   __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
 
-  /** TODO: Esto moverlo a la funcion de power-on el día de mañana */
-  _enable_lvl_shifter(bg95);
-
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
                                     BG95_RX_BUFFER_SIZE)) != HAL_OK) {
     HAL_UART_DMAStop(bg95->huart);
@@ -194,30 +285,21 @@ bool BG95_process_rx(BG95_t *bg95) {
 
     _BG95_set_last_response(bg95, bg95->rx_size);
 
-    _disable_lvl_shifter(bg95);
     bg95->responseReady = false;
     bg95->rx_size = 0;
     return true;
 
   } else {
     if (_BG95_process_data(bg95) == BG95_OK) {
-      _disable_lvl_shifter(bg95);
       bg95->responseReady = false;
       bg95->rx_size = 0;
       return true;
     } else {
-      _disable_lvl_shifter(bg95);
       bg95->responseReady = false;
       bg95->rx_size = 0;
       return false;
     }
   }
-
-  _disable_lvl_shifter(bg95);
-  bg95->responseReady = false;
-  bg95->rx_size = 0;
-
-  return false;
 }
 
 /**
@@ -240,14 +322,11 @@ bg95_status_t BG95_quick_check_response(BG95_t *bg95) {
   } else {
     bg95->responseReady = false;
     bg95->rx_size = 0;
-    _disable_lvl_shifter(bg95);
     return BG95_CMD_RESP_ERROR;
   }
 
   bg95->responseReady = false;
   bg95->rx_size = 0;
-
-  _disable_lvl_shifter(bg95);
 
   return BG95_OK;
 }
