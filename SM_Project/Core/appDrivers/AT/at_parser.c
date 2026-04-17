@@ -20,15 +20,6 @@ static uint8_t raw_envelope[MAX_ENV_SIZE];
 
 /* ---------------------- Private functions declaration --------------------- */
 
-static void _get_str_slice(const char *str, size_t size, size_t offset,
-                           size_t num_bytes, char *out_str, size_t out_size);
-
-static void _num_to_hex(char *dest, size_t size, uint32_t num,
-                        uint8_t num_bytes);
-
-static int8_t _hexstr_to_bytes(const char *hexstr, uint16_t hex_len,
-                               uint8_t *out, uint16_t out_len);
-
 static void _bytes_to_hexstr(const uint8_t *src, uint16_t len, char *dst);
 
 static char *next_token(const char **str);
@@ -687,99 +678,6 @@ void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc) {
 }
 
 /* ---------------------- Private functions definition ---------------------- */
-
-/**
- * @brief Get the str slice
- *
- * @param str Original string.
- * @param size Size of original string (str).
- * @param offset Offset in bytes.
- * @param num_bytes Number of bytes to get from offset.
- * @param out_str Output string.
- * @param out_size Size of output string.
- */
-static void _get_str_slice(const char *str, size_t size, size_t offset,
-                           size_t num_bytes, char *out_str, size_t out_size) {
-  if (!str || !out_str) return;
-
-  size_t start = offset * 2;
-  size_t length = num_bytes * 2;
-
-  if (start + length > size) {
-    out_str[0] = '\0';
-    return;
-  }
-
-  if (out_size < length + 1) {
-    out_str[0] = '\0';
-    return;
-  }
-
-  memcpy(out_str, str + start, length);
-  out_str[length] = '\0';
-  // Afuera de esta funcion, si necesito obtener un numero de este pedaso,
-  // usar strtoul().
-}
-
-/**
- * @brief
- *
- * @param dest
- * @param size
- * @param num
- * @param num_bytes
- */
-static void __attribute__((unused)) _num_to_hex(char *dest, size_t dest_size,
-                                                uint32_t num,
-                                                uint8_t num_bytes) {
-  int width = num_bytes * 2;
-  snprintf(dest, dest_size, "%0*lX", width, num);
-}
-
-/**
- * @brief Converts a hex string into an array of bytes.
- *
- * @param hexstr Input string (Example: "A1B2C3D4...")
- * @param hex_len Length of input string.
- * @param out Output array where bytes are going to be stored.
- * @param out_len Length of output array.
- * @retval int Amount of bytes converted.
- * @retval -1 in case of error.
- */
-static int8_t _hexstr_to_bytes(const char *hexstr, uint16_t hex_len,
-                               uint8_t *out, uint16_t out_len) {
-  if (!hexstr || !out) return -1;
-
-  if (hex_len % 2 != 0) return -1;
-
-  uint16_t bytes_len = hex_len / 2;
-  if (bytes_len > out_len) return -1;
-
-  for (uint16_t i = 0; i < bytes_len; i++) {
-    char c1 = toupper((unsigned char)hexstr[2 * i]);
-    char c2 = toupper((unsigned char)hexstr[(2 * i) + 1]);
-
-    uint8_t nibble1, nibble2;
-
-    if (c1 >= '0' && c1 <= '9')
-      nibble1 = c1 - '0';
-    else if (c1 >= 'A' && c1 <= 'F')
-      nibble1 = c1 - 'A' + 10;
-    else
-      return -1;
-
-    if (c2 >= '0' && c2 <= '9')
-      nibble2 = c2 - '0';
-    else if (c2 >= 'A' && c2 <= 'F')
-      nibble2 = c2 - 'A' + 10;
-    else
-      return -1;
-
-    out[i] = (nibble1 << 4) | nibble2;
-  }
-
-  return bytes_len;
-}
 
 /**
  * @brief
