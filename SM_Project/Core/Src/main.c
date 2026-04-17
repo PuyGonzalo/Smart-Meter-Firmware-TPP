@@ -130,15 +130,12 @@ int main(void)
   /*Creo delay para comandos at*/
   at_command_delay = delay_timer_create();
 
-  HAL_Delay(5000);
+  /* Power on modem and run registration if needed */
+  ATCore_power_on();
 
-  /* Run registration to completion (blocking) */
   if (!Storage_is_registered()) {
     Com_register_device_blocking(REGISTRATION_TIMEOUT_MS);
   }
-
-  /* Start periodic session */
-  Com_session_start();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -148,7 +145,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    Com_session_process();
+    Com_session_start();
+    while (!Com_is_session_done()) {
+      Com_session_process();
+    }
+    ATCore_power_off();
+
+    /* TODO(Phase 5.1): enter Stop mode until RTC alarm wakes us up */
+    HAL_Delay(10000);
+    ATCore_power_on();
   }
   /* USER CODE END 3 */
 }

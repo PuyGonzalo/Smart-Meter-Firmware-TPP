@@ -67,6 +67,8 @@ typedef struct
 
 void ATCore_init(UART_HandleTypeDef *huart);
 void ATCore_config();
+bool ATCore_power_on(void);
+bool ATCore_power_off(void);
 void ATCore_set_device_id(uint8_t *dev_id);
 bool ATCore_compare_device_id(uint8_t *dev_id);
 void ATCore_get_device_id(uint8_t *dev_id_cpy);

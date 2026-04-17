@@ -136,6 +136,24 @@ void ATCore_init(UART_HandleTypeDef *huart) {
  */
 void ATCore_config() {}
 
+/**
+ * @brief Power on the modem (enables level shifter and pulses PWRKEY).
+ *
+ * @return true if modem is ready, false on timeout.
+ */
+bool ATCore_power_on(void) {
+  return BG95_power_on(AT_DEVICE) == BG95_OK;
+}
+
+/**
+ * @brief Power off the modem (AT+QPOWD and disables level shifter).
+ *
+ * @return true on graceful power-down, false on timeout.
+ */
+bool ATCore_power_off(void) {
+  return BG95_power_off(AT_DEVICE) == BG95_OK;
+}
+
 /**c
  * @brief
  *
