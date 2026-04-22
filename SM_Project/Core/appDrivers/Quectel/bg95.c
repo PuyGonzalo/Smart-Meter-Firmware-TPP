@@ -128,13 +128,13 @@ bg95_status_t BG95_power_on(BG95_t *bg95) {
   _enable_lvl_shifter(bg95);
   HAL_Delay(10);
 
-  /* PWRKEY pulse: HIGH (idle) → LOW for 600ms → HIGH */
+  /* PWRKEY pulse: HIGH (idle) → LOW for BG95_PWRKEY_ON_MS → HIGH */
   HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
                     GPIO_PIN_SET);
   HAL_Delay(50);
   HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
                     GPIO_PIN_RESET);
-  HAL_Delay(BG95_PWRKEY_PULSE_MS);
+  HAL_Delay(BG95_PWRKEY_ON_MS);
   HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
                     GPIO_PIN_SET);
 
@@ -165,35 +165,36 @@ bg95_status_t BG95_power_on(BG95_t *bg95) {
 }
 
 /**
- * @brief Power off the BG95 modem.
+ * @brief Power off the BG95 modem via PWRKEY pulse.
  *
- * Sends AT+QPOWD=1 (normal power down), waits for "POWERED DOWN",
- * then disables the level shifter.
+ * Sequence: PWRKEY pulse LOW for BG95_PWRKEY_OFF_MS → poll STATUS pin
+ * until LOW (module fully off) → disable level shifter.
  *
  * @param bg95 Pointer to BG95 instance
- * @return BG95_OK on success, BG95_CMD_RESP_ERROR on timeout
+ * @return BG95_OK if STATUS went LOW within timeout, BG95_CMD_RESP_ERROR otherwise
  */
 bg95_status_t BG95_power_off(BG95_t *bg95) {
   if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
 
   BG95_reset_rx(bg95);
 
-  const char qpowd_cmd[] = "AT+QPOWD=1\r\n";
-  if (BG95_send_command(bg95, qpowd_cmd, strlen(qpowd_cmd)) != BG95_OK) {
-    _disable_lvl_shifter(bg95);
-    return BG95_CMD_RESP_ERROR;
-  }
+  /* PWRKEY pulse: HIGH (idle) → LOW for BG95_PWRKEY_OFF_MS → HIGH */
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
+  HAL_Delay(50);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_RESET);
+  HAL_Delay(BG95_PWRKEY_OFF_MS);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
 
-  /* Wait for "POWERED DOWN" URC */
+  /* Poll STATUS until LOW = module fully off */
   uint32_t start = HAL_GetTick();
   while ((HAL_GetTick() - start) < BG95_POWEROFF_TIMEOUT_MS) {
-    if (bg95->responseReady) {
-      if (strstr(bg95->rxBuffer, "POWERED DOWN") != NULL) {
-        _disable_lvl_shifter(bg95);
-        BG95_reset_rx(bg95);
-        return BG95_OK;
-      }
-      BG95_reset_rx(bg95);
+    if (HAL_GPIO_ReadPin(bg95->status_pin.GPIOx,
+                         bg95->status_pin.GPIO_Pin) == GPIO_PIN_RESET) {
+      _disable_lvl_shifter(bg95);
+      return BG95_OK;
     }
     HAL_Delay(100);
   }
@@ -371,6 +372,12 @@ void BG95_reset_rx(BG95_t *bg95) {
   if (bg95 == NULL) return;
 
   HAL_UART_DMAStop(bg95->huart);
+
+  /* Clear UART error flags — crucial on L0: an ORE (overrun) accumulated
+   * during boot URC flood will block subsequent idle-line detection. */
+  __HAL_UART_CLEAR_FLAG(bg95->huart,
+                        UART_CLEAR_OREF | UART_CLEAR_NEF |
+                        UART_CLEAR_FEF | UART_CLEAR_PEF);
 
   bg95->responseReady = false;
   bg95->responseStatus = BG95_RESP_NOT_RECEIVED;
