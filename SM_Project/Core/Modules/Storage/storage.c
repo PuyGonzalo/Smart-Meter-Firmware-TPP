@@ -114,13 +114,13 @@ uint32_t Storage_load_pulse_count(void) {
 }
 
 /**
- * @brief Erase all stored data (magic, credentials, pulse count)
+ * @brief Erase all stored data (credentials, pulse count, IMEI)
  */
 bool Storage_erase_all(void) {
   if (HAL_FLASHEx_DATAEEPROM_Unlock() != HAL_OK) return false;
 
-  /* Write 0xFF to all used bytes (0x00 to 0x27 = 40 bytes) */
-  for (uint16_t i = 0; i < 0x28; i++) {
+  /* Covers: magic(4) + device_id(16) + mac(16) + pulse(4) + imei_magic(4) + imei(16) = 0x3C bytes */
+  for (uint16_t i = 0; i < 0x3C; i++) {
     if (HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_BYTE,
                                         STORAGE_BASE_ADDR + i, 0xFF) != HAL_OK) {
       HAL_FLASHEx_DATAEEPROM_Lock();
@@ -130,5 +130,37 @@ bool Storage_erase_all(void) {
 
   HAL_FLASHEx_DATAEEPROM_Lock();
   storage_registered = false;
+  return true;
+}
+
+/**
+ * @brief Check if IMEI has been saved to EEPROM.
+ */
+bool Storage_has_imei(void) {
+  uint32_t magic = *(__IO uint32_t *)STORAGE_IMEI_MAGIC_ADDR;
+  return (magic == STORAGE_IMEI_MAGIC_VALUE);
+}
+
+/**
+ * @brief Save IMEI string (15 digits + NUL) to EEPROM.
+ */
+bool Storage_save_imei(const char *imei) {
+  if (!imei) return false;
+
+  if (!eeprom_write(STORAGE_IMEI_ADDR, (const uint8_t *)imei, STORAGE_IMEI_LEN))
+    return false;
+
+  return eeprom_write_word(STORAGE_IMEI_MAGIC_ADDR, STORAGE_IMEI_MAGIC_VALUE);
+}
+
+/**
+ * @brief Load IMEI string from EEPROM into caller-provided buffer.
+ */
+bool Storage_load_imei(char *out, uint16_t cap) {
+  if (!out || cap < STORAGE_IMEI_LEN) return false;
+  if (!Storage_has_imei()) return false;
+
+  memcpy(out, (const void *)STORAGE_IMEI_ADDR, STORAGE_IMEI_LEN);
+  out[STORAGE_IMEI_LEN - 1] = '\0';
   return true;
 }

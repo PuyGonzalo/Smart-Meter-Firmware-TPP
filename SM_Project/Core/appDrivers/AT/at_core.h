@@ -87,5 +87,6 @@ bool ATCore_cmp_str_in_field(const char *str, uint16_t field_index);
 int16_t ATCore_get_first_qird_value();
 void ATCore_set_data_mode();
 void ATCore_reset_rx();
+bool ATCore_get_imei(char *out, uint16_t cap);
 
 #endif  // _ATCORE_H_

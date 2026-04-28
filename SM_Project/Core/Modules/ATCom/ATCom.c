@@ -83,6 +83,15 @@ static session_fsm_t session = {.current_state = COM_SES_IDLE,
 static uint8_t ses_payload_buf[96];
 static uint16_t ses_payload_len = 0;
 
+/* IPv6 address fetched after PDP context is up, used in registration payload */
+static char reg_ipv6[48];
+/* Registration payload buffer (IMEI string + IPv6 string, RLP-encoded) */
+static uint8_t reg_payload_buf[80];
+static uint16_t reg_payload_len = 0;
+
+/* Seconds until next wake-up as dictated by HES. 0 means "no pending value". */
+static uint32_t pending_wake_seconds = 0;
+
 /* External variables */
 bool is_device_connected = true;
 
@@ -113,6 +122,16 @@ void Com_Init(void) {
   register_process.current_state = COM_REG_INIT;
   udp_process.current_state = COM_UDP_IDLE;
   session.current_state = COM_SES_IDLE;
+}
+
+/**
+ * @brief Pop the wake-up delay (seconds) requested by HES, then clear it.
+ * @return Delay in seconds, or 0 if HES has not provided a value.
+ */
+uint32_t Com_pop_pending_wake_seconds(void) {
+  uint32_t v = pending_wake_seconds;
+  pending_wake_seconds = 0;
+  return v;
 }
 
 /**
@@ -225,9 +244,8 @@ void Com_register_device_process(void) {
       int udp_result = Com_UDP_context_process();
 
       if (udp_result == COM_UDP_PROCESS_DONE) {
-        delay_start(register_process.state_delay_timer, 1000);
         delay_stop(register_process.state_timeout_timer);
-        register_process.current_state = COM_REG_SEND;
+        register_process.current_state = COM_REG_FETCH_IPV6;
       } else if (udp_result == COM_UDP_PROCESS_ERROR) {
         udp_process.current_state = COM_UDP_IDLE;
         handle_failure();
@@ -235,16 +253,76 @@ void Com_register_device_process(void) {
     } break;
 
     /* --------------------------------------------------------- */
+    case COM_REG_FETCH_IPV6: {
+      cmd.id = CMD_AT_CGPADDR;
+      cmd.cmd_mode = AT_CMD_WRITE;
+      cmd.num_params[0] = 1;
+      cmd.nb_num_params = 1;
+      cmd.total_params = 1;
+      cmd.param_types[0] = AT_PARAM_NUM;
+
+      if (ATCore_send_cmd(&cmd)) {
+        delay_start(register_process.state_timeout_timer, 3000);
+        register_process.current_state = COM_REG_WAIT_FETCH_IPV6;
+      } else {
+        handle_failure();
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_REG_WAIT_FETCH_IPV6: {
+      if (!ATCore_is_response_ready()) break;
+
+      delay_stop(register_process.state_timeout_timer);
+      ATCore_process_response();
+
+      char resp[BG95_RX_BUFFER_SIZE];
+      uint16_t resp_size;
+      ATCore_get_last_response(resp, sizeof(resp), &resp_size);
+
+      /* Parse IP between quotes: +CGPADDR: 1,"<IP>" */
+      reg_ipv6[0] = '\0';
+      char *start = strchr(resp, '"');
+      if (start) {
+        start++;
+        char *end = strchr(start, '"');
+        if (end && end > start) {
+          uint16_t len = (uint16_t)(end - start);
+          if (len < sizeof(reg_ipv6)) {
+            memcpy(reg_ipv6, start, len);
+            reg_ipv6[len] = '\0';
+          }
+        }
+      }
+
+      delay_start(register_process.state_delay_timer, 1000);
+      register_process.current_state = COM_REG_SEND;
+    } break;
+
+    /* --------------------------------------------------------- */
     case COM_REG_SEND: {
       if (!delay_has_finished(register_process.state_delay_timer)) break;
 
       envp.version = 1;
-      envp.msg_type = 2;
+      envp.msg_type = MSG_TYPE_REGISTER_REQUEST;
       envp.seq = 0;
       envp.timestamp_high = 0;
       envp.timestamp_low = 0;
 
-      const uint8_t *raw = Parser_fBuild_Envelope(&envp, &envp_size);
+      /* Build RLP payload: list[ imei_str, ipv6_str ] */
+      char imei[STORAGE_IMEI_LEN] = {0};
+      Storage_load_imei(imei, sizeof(imei));
+
+      rlp_writer_t w;
+      rlp_writer_init(&w, reg_payload_buf, sizeof(reg_payload_buf));
+      uint16_t bm = rlp_list_begin(&w);
+      rlp_encode_string(&w, imei);
+      rlp_encode_string(&w, reg_ipv6);
+      rlp_list_end(&w, bm);
+      reg_payload_len = rlp_writer_ok(&w) ? rlp_writer_len(&w) : 0;
+
+      const uint8_t *raw = Parser_fBuild_Envelope_w_payload(
+          &envp, reg_payload_buf, reg_payload_len, &envp_size);
 
       cmd.id = CMD_AT_QISENDEX;
       cmd.cmd_mode = AT_CMD_WRITE;
@@ -360,21 +438,53 @@ void Com_register_device_process(void) {
       uint16_t response_size;
       char buf[BG95_RX_BUFFER_SIZE];
       envelope_t rx_env;
+      const uint8_t *payload;
+      uint16_t payload_size;
 
       ATCore_get_last_response(buf, sizeof(buf), &response_size);
-      Parser_fParse_Envelope(buf, response_size, &rx_env);
+      Parser_fParse_Envelope_w_payload((const uint8_t *)buf, response_size,
+                                       &rx_env, &payload, &payload_size);
 
-      if (rx_env.msg_type == 3) {
+      if (rx_env.msg_type == MSG_TYPE_REGISTER_RESPONSE) {
+        /* Sync RTC from envelope timestamp provided by HES */
+        RTC_set_datetime(rx_env.timestamp_high, rx_env.timestamp_low);
+
+        /* Decode RLP payload: list[ flag(u8), next_wake_time(u64) ] */
+        if (payload_size > 0) {
+          rlp_reader_t r, list;
+          rlp_reader_init(&r, payload, payload_size);
+          if (rlp_enter_list(&r, &list)) {
+            uint8_t flag = 0xFF;
+            uint64_t next_wake_time = 0;
+            rlp_decode_uint8(&list, &flag);
+            rlp_decode_uint64(&list, &next_wake_time);
+
+            if (flag != 0x00) {
+              handle_failure();
+              break;
+            }
+
+            /* Save delta (in seconds) for main loop to honor as next wake-up */
+            uint32_t now_high, now_low;
+            RTC_get_timestamp(&now_high, &now_low);
+            uint64_t now = ((uint64_t)now_high << 32) | now_low;
+            if (next_wake_time > now) {
+              uint64_t delta = next_wake_time - now;
+              if (delta < 86400ULL) {
+                pending_wake_seconds = (uint32_t)delta;
+              }
+            }
+          }
+        }
+
         ATCore_set_device_id(rx_env.device_id);
         ATCore_set_device_mac(rx_env.mac);
         Storage_save_credentials(rx_env.device_id, rx_env.mac);
         envp.seq = rx_env.seq + 1;
 
-        delay_start(register_process.state_timeout_timer,
-                    GENERIC_RETRY_DELAY_MS);
+        delay_start(register_process.state_timeout_timer, GENERIC_RETRY_DELAY_MS);
         register_process.current_state = COM_REG_ACK;
       } else {
-        // Unexpected message type
         handle_failure();
       }
     } break;

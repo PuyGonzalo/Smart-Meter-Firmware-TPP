@@ -21,6 +21,8 @@
 typedef enum {
   COM_REG_INIT,
   COM_REG_UDP_CTX,
+  COM_REG_FETCH_IPV6,       /* Send AT+CGPADDR=1 to get assigned IP */
+  COM_REG_WAIT_FETCH_IPV6,  /* Wait for CGPADDR response */
   COM_REG_SEND,
   COM_REG_WAIT_SEND_OK,
   COM_REG_VERIFY_DATA_RDY,
@@ -135,6 +137,7 @@ bool Com_register_device_blocking(uint32_t timeout_ms);
 void Com_session_process(void);
 bool Com_is_session_done(void);
 void Com_session_start(void);
+uint32_t Com_pop_pending_wake_seconds(void);
 
 
 

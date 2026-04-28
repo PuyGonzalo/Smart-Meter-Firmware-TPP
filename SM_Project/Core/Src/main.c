@@ -47,11 +47,11 @@
 #define SESSION_PERIOD_SEC       60      /* Interval between HES sessions */
 
 /* Uncomment to wipe EEPROM on boot (forces re-registration) */
-// #define DEBUG_ERASE_EEPROM
+#define DEBUG_ERASE_EEPROM
 
 /* Tests — descomentar UNO a la vez (o ninguno para flujo normal) */
 // #define TEST_PWRKEY_STATUS
-#define TEST_RTC_WAKEUP
+//#define TEST_RTC_WAKEUP
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -227,8 +227,27 @@ int main(void)
   /* Power on modem and run registration if needed */
   ATCore_power_on();
 
+  /* Fetch and persist IMEI on first boot (modem must be on) */
+  if (!Storage_has_imei()) {
+    char imei[STORAGE_IMEI_LEN];
+    if (ATCore_get_imei(imei, sizeof(imei))) {
+      Storage_save_imei(imei);
+    }
+  }
+
   if (!Storage_is_registered()) {
     Com_register_device_blocking(REGISTRATION_TIMEOUT_MS);
+  }
+
+  /* If HES provided a wake-up time during registration, honor it before the
+   * first session: power off and sleep until the absolute moment HES asked. */
+  uint32_t initial_wake = Com_pop_pending_wake_seconds();
+  if (initial_wake > 0) {
+    ATCore_power_off();
+    RTC_arm_alarm(initial_wake);
+    while (!RTC_alarm_fired()) { }
+    RTC_clear_alarm_flag();
+    ATCore_power_on();
   }
   /* USER CODE END 2 */
 
@@ -245,8 +264,13 @@ int main(void)
     }
     ATCore_power_off();
 
+    /* HES dictates next wake-up if it sent one in this session's response;
+     * fall back to local default cadence otherwise. */
+    uint32_t next_wake = Com_pop_pending_wake_seconds();
+    if (next_wake == 0) next_wake = SESSION_PERIOD_SEC;
+
     /* TODO(Phase 5.1): enter Stop mode here instead of busy-wait */
-    RTC_arm_alarm(SESSION_PERIOD_SEC);
+    RTC_arm_alarm(next_wake);
     while (!RTC_alarm_fired()) { }
     RTC_clear_alarm_flag();
 
