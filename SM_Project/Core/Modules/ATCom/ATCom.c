@@ -989,6 +989,7 @@ static bool session_extract_next_wake(const uint8_t *req_payload,
  * @brief Start a new periodic session
  */
 void Com_session_start(void) {
+  ATCore_reset_rx();  /* Clear any ORE/URCs accumulated since last DMA arm */
   session.current_state = COM_SES_UDP_CTX;
   session.after_send_ok = COM_SES_KEEPALIVE_WAIT;
   session.failure_count = 0;
