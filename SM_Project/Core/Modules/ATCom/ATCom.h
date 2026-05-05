@@ -33,6 +33,9 @@ typedef enum {
   COM_REG_PROCESS_DATA,
   COM_REG_ACK,
   COM_REG_WAIT_ACK_SEND,
+  COM_REG_DRAIN_POLL,       /* QIRD len=0 — check if HES confirm ACK is buffered */
+  COM_REG_DRAIN_POLL_WAIT,  /* Wait for QIRD len=0 response */
+  COM_REG_DRAIN_READ_WAIT,  /* Wait for QIRD read to flush the ACK */
   COM_REG_FINISHED,
   COM_REG_RESTART_WAIT,
 } registration_state_t;

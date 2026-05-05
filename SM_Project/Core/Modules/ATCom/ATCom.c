@@ -534,10 +534,68 @@ void Com_register_device_process(void) {
       if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
         register_process.failure_count = 0;
         delay_stop(register_process.state_timeout_timer);
-        register_process.current_state = COM_REG_FINISHED;
+        delay_start(register_process.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
+        register_process.current_state = COM_REG_DRAIN_POLL;
       } else {
         handle_failure();
       }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_REG_DRAIN_POLL: {
+      /* Best-effort: give the HES a moment, then check if confirm ACK arrived. */
+      if (!delay_has_finished(register_process.state_delay_timer)) break;
+
+      cmd.id = CMD_AT_QIRD;
+      cmd.cmd_mode = AT_CMD_WRITE_OPT;
+      cmd.num_params[0] = BG95_CONNECT_ID;
+      cmd.num_params[1] = 0;
+      if (ATCore_send_cmd(&cmd)) {
+        delay_start(register_process.state_delay_timer, TIMEOUT_DATA_RDY);
+        register_process.current_state = COM_REG_DRAIN_POLL_WAIT;
+      } else {
+        register_process.current_state = COM_REG_FINISHED;
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_REG_DRAIN_POLL_WAIT: {
+      if (delay_has_finished(register_process.state_delay_timer)) {
+        register_process.current_state = COM_REG_FINISHED;
+        break;
+      }
+      if (!ATCore_is_response_ready()) break;
+
+      ATCore_process_response();
+      delay_stop(register_process.state_delay_timer);
+
+      if (ATCore_get_first_qird_value() > 0) {
+        cmd.id = CMD_AT_QIRD;
+        cmd.cmd_mode = AT_CMD_WRITE;
+        cmd.num_params[0] = BG95_CONNECT_ID;
+        if (ATCore_send_cmd(&cmd)) {
+          delay_start(register_process.state_delay_timer, TIMEOUT_DATA_REQUEST);
+          register_process.current_state = COM_REG_DRAIN_READ_WAIT;
+        } else {
+          register_process.current_state = COM_REG_FINISHED;
+        }
+      } else {
+        register_process.current_state = COM_REG_FINISHED;
+      }
+    } break;
+
+    /* --------------------------------------------------------- */
+    case COM_REG_DRAIN_READ_WAIT: {
+      if (delay_has_finished(register_process.state_delay_timer)) {
+        register_process.current_state = COM_REG_FINISHED;
+        break;
+      }
+      if (!ATCore_is_response_ready()) break;
+
+      ATCore_set_data_mode();
+      ATCore_process_response();  /* discard — data not needed */
+      delay_stop(register_process.state_delay_timer);
+      register_process.current_state = COM_REG_FINISHED;
     } break;
 
     /* --------------------------------------------------------- */
