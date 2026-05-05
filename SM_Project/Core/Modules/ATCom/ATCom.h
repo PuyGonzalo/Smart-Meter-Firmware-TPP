@@ -131,7 +131,7 @@ typedef enum {
 /* Cold-start budget: device wakes this many seconds before the agreed
  * next_wake_time so the BG95 has time to attach + open PDP + send announce.
  * Refine empirically once we have field measurements. */
-#define COLD_START_OFFSET_SEC  45U
+#define COLD_START_OFFSET_SEC  120U
 
 /* Periodic session keepalive cadence and total wait timeout (ms) */
 #define SESSION_KEEPALIVE_PERIOD_MS  10000U
