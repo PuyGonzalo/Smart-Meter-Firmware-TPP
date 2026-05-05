@@ -70,19 +70,31 @@ typedef struct {
 /* ---- Periodic session FSM ---- */
 
 typedef enum {
-  COM_SES_IDLE,               /* Waiting to start */
-  COM_SES_UDP_CTX,            /* Establishing UDP connection */
-  COM_SES_SEND_MSG,           /* Build and send envelope via QISENDEX */
-  COM_SES_WAIT_SEND_OK,       /* Wait for SEND_OK from modem */
-  COM_SES_WAIT_DATA,          /* Delay before polling for incoming data */
-  COM_SES_CHECK_DATA_RDY,     /* Poll QIRD len=0 to check if data available */
-  COM_SES_WAIT_DATA_RDY,      /* Wait for QIRD poll response */
-  COM_SES_READ_DATA,          /* QIRD to read actual data */
-  COM_SES_READ_DATA_WAIT,     /* Wait for QIRD data response */
-  COM_SES_PROCESS_MSG,        /* Parse received msg, decide next action */
-  COM_SES_DONE,               /* Session complete */
-  COM_SES_ERROR,              /* Unrecoverable error */
-  COM_SES_RESTART_WAIT,       /* Backoff before retry */
+  COM_SES_IDLE,                  /* Waiting to start */
+  COM_SES_UDP_CTX,               /* Establishing UDP connection */
+
+  /* Announce phase (REGISTER_REQUEST with stored device_id != 0) */
+  COM_SES_FETCH_IPV6,            /* AT+CGPADDR=1 to read current IPv6 */
+  COM_SES_WAIT_FETCH_IPV6,       /* Wait for CGPADDR response */
+  COM_SES_SEND_ANNOUNCE,         /* Build & send REGISTER_REQUEST */
+
+  /* Generic SEND_OK wait — transitions to session.after_send_ok */
+  COM_SES_WAIT_SEND_OK,
+
+  /* Keepalive loop while waiting for next HES message */
+  COM_SES_KEEPALIVE_WAIT,        /* Idle wait between polls / keepalives */
+  COM_SES_CHECK_HES_DATA,        /* AT+QIRD=ID,0 to check if data available */
+  COM_SES_CHECK_HES_DATA_WAIT,   /* Wait QIRD len=0 response */
+  COM_SES_SEND_KEEPALIVE,        /* Send KEEPALIVE envelope */
+
+  /* Reading & processing HES message */
+  COM_SES_READ_HES_MSG,          /* AT+QIRD with size to read bytes */
+  COM_SES_READ_HES_MSG_WAIT,     /* Wait QIRD data response */
+  COM_SES_PROCESS_HES_MSG,       /* Parse envelope and dispatch */
+
+  COM_SES_DONE,                  /* Session complete */
+  COM_SES_ERROR,                 /* Unrecoverable error */
+  COM_SES_RESTART_WAIT,          /* Backoff before retry */
 } session_state_t;
 
 /* Message types (IEC 62056 / protocol spec) */
@@ -90,7 +102,7 @@ typedef enum {
 #define MSG_TYPE_HANDSHAKE_RESPONSE 0x01
 #define MSG_TYPE_REGISTER_REQUEST   0x02
 #define MSG_TYPE_REGISTER_RESPONSE  0x03
-#define MSG_TYPE_ANNOUNCE           0x04
+#define MSG_TYPE_KEEPALIVE          0x05
 #define MSG_TYPE_READ_REQUEST       0x0A
 #define MSG_TYPE_READ_RESPONSE      0x0B
 #define MSG_TYPE_WRITE_REQUEST      0x14
@@ -106,6 +118,21 @@ typedef enum {
 #define OBIS_OP_WRITE   0x01
 #define OBIS_OP_EXECUTE 0x02
 #define OBIS_OP_ACTION  0x03
+
+/* OBIS code identifiers (string form, matched by HES) */
+#define OBIS_WATER_VOLUME  "1.0.1"
+#define OBIS_CLOCK         "0.9.4"
+#define OBIS_BATTERY       "C.6.1"
+#define OBIS_NEXT_WAKE     "0.0.1"
+
+/* Cold-start budget: device wakes this many seconds before the agreed
+ * next_wake_time so the BG95 has time to attach + open PDP + send announce.
+ * Refine empirically once we have field measurements. */
+#define COLD_START_OFFSET_SEC  45U
+
+/* Periodic session keepalive cadence and total wait timeout (ms) */
+#define SESSION_KEEPALIVE_PERIOD_MS  10000U
+#define SESSION_HES_WAIT_TIMEOUT_MS  60000U
 
 typedef struct {
   session_state_t current_state;

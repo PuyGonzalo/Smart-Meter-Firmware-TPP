@@ -71,7 +71,7 @@ static envelope_t envp = {
 static uint16_t envp_size = 0;
 
 static session_fsm_t session = {.current_state = COM_SES_IDLE,
-                                .after_send_ok = COM_SES_WAIT_DATA,
+                                .after_send_ok = COM_SES_KEEPALIVE_WAIT,
                                 .failure_count = 0,
                                 .needs_hard_reset = false,
                                 .seq = 0,
@@ -82,6 +82,13 @@ static session_fsm_t session = {.current_state = COM_SES_IDLE,
 /* Buffer for session payload building */
 static uint8_t ses_payload_buf[96];
 static uint16_t ses_payload_len = 0;
+
+/* IPv6 fetched at the start of each session for the announce */
+static char ses_ipv6[48] = {0};
+
+/* HAL_GetTick() value at the moment of last sent activity (announce, response,
+ * or keepalive). Used to decide when to fire the next keepalive. */
+static uint32_t ses_last_activity_ms = 0;
 
 /* IPv6 address fetched after PDP context is up, used in registration payload */
 static char reg_ipv6[48];
@@ -464,12 +471,15 @@ void Com_register_device_process(void) {
               break;
             }
 
-            /* Save delta (in seconds) for main loop to honor as next wake-up */
+            /* Save delta (in seconds) for main loop to honor as next wake-up.
+             * Subtract COLD_START_OFFSET_SEC so the device wakes early enough
+             * to power on the BG95, attach, fetch IPv6 and send the announce
+             * before the agreed contact moment. */
             uint32_t now_high, now_low;
             RTC_get_timestamp(&now_high, &now_low);
             uint64_t now = ((uint64_t)now_high << 32) | now_low;
-            if (next_wake_time > now) {
-              uint64_t delta = next_wake_time - now;
+            if (next_wake_time > now + COLD_START_OFFSET_SEC) {
+              uint64_t delta = next_wake_time - now - COLD_START_OFFSET_SEC;
               if (delta < 86400ULL) {
                 pending_wake_seconds = (uint32_t)delta;
               }
@@ -771,20 +781,30 @@ static bool session_send_envelope(uint8_t msg_type, const uint8_t *payload,
 }
 
 /**
- * @brief Build an RLP-encoded read response from a read request payload
+ * @brief Append an OBIS [code, value] pair to an RLP writer.
+ *        Value bytes are big-endian, byte-order matching what the HES expects.
+ */
+static void session_append_obis_value(rlp_writer_t *w, const char *code,
+                                       const uint8_t *value, uint16_t value_len) {
+  uint16_t bm = rlp_list_begin(w);
+  rlp_encode_string(w, code);
+  rlp_encode_bytes(w, value, value_len);
+  rlp_list_end(w, bm);
+}
+
+/**
+ * @brief Build a READ_RESPONSE payload from a list of OBIS codes requested
+ *        by the HES.
  *
- * Request payload: RLP list [ op_code(0x00), obis_code_string ]
- * Response payload: RLP list [ op_code(0x00), obis_code_string, value ]
+ *  Request payload: RLP list [ obis_code_str, ... ]
+ *  Response payload: RLP list [ [obis_code_str, value_bytes], ... ]
  *
- * Supported OBIS codes:
- *  - "1.0.1" → water volume (uint64, litres)
- *  - "0.9.4" → current timestamp (uint64)
+ *  Supported OBIS codes:
+ *    "1.0.1" → water volume (uint64 BE, 8 B)
+ *    "0.9.4" → current timestamp (uint64 BE, 8 B)
+ *    "C.6.1" → battery level (uint8, 1 B)
  *
- * @param req_payload  RLP-encoded request payload
- * @param req_len      Length of request payload
- * @param out          Output buffer for response payload
- * @param out_cap      Capacity of output buffer
- * @return Size of encoded response, or 0 on error
+ * @return Size of encoded response, or 0 on error.
  */
 static uint16_t session_build_read_response(const uint8_t *req_payload,
                                              uint16_t req_len,
@@ -795,42 +815,116 @@ static uint16_t session_build_read_response(const uint8_t *req_payload,
   rlp_reader_t list_r;
   if (!rlp_enter_list(&r, &list_r)) return 0;
 
-  uint8_t op_code;
-  if (!rlp_decode_uint8(&list_r, &op_code)) return 0;
-  if (op_code != OBIS_OP_READ) return 0;
-
-  char obis_code[16];
-  uint16_t obis_len;
-  if (!rlp_decode_string(&list_r, obis_code, sizeof(obis_code), &obis_len))
-    return 0;
-
-  /* Build response */
   rlp_writer_t w;
   rlp_writer_init(&w, out, out_cap);
+  uint16_t outer = rlp_list_begin(&w);
 
-  uint16_t bm = rlp_list_begin(&w);
-  rlp_encode_uint8(&w, OBIS_OP_READ);
-  rlp_encode_string(&w, obis_code);
+  while (!rlp_reader_done(&list_r)) {
+    char code[16];
+    uint16_t code_len;
+    if (!rlp_decode_string(&list_r, code, sizeof(code), &code_len)) return 0;
 
-  if (strcmp(obis_code, "1.0.1") == 0) {
-    /* Water consumption in litres */
-    uint64_t volume = (uint64_t)PulseCounter_get_volume_liters();
-    rlp_encode_uint64(&w, volume);
-  } else if (strcmp(obis_code, "0.9.4") == 0) {
-    /* Current timestamp */
-    uint32_t ts_hi, ts_lo;
-    RTC_get_timestamp(&ts_hi, &ts_lo);
-    uint64_t ts = ((uint64_t)ts_hi << 32) | ts_lo;
-    rlp_encode_uint64(&w, ts);
-  } else {
-    /* Unknown OBIS code — cannot respond */
-    return 0;
+    if (strcmp(code, OBIS_WATER_VOLUME) == 0) {
+      uint64_t v = (uint64_t)PulseCounter_get_volume_liters();
+      uint8_t be[8];
+      for (int i = 0; i < 8; i++) be[i] = (uint8_t)(v >> (56 - i * 8));
+      session_append_obis_value(&w, code, be, sizeof(be));
+    } else if (strcmp(code, OBIS_CLOCK) == 0) {
+      uint32_t ts_hi, ts_lo;
+      RTC_get_timestamp(&ts_hi, &ts_lo);
+      uint64_t ts = ((uint64_t)ts_hi << 32) | ts_lo;
+      uint8_t be[8];
+      for (int i = 0; i < 8; i++) be[i] = (uint8_t)(ts >> (56 - i * 8));
+      session_append_obis_value(&w, code, be, sizeof(be));
+    } else if (strcmp(code, OBIS_BATTERY) == 0) {
+      /* TODO: wire to real ADC reading; placeholder fixed value for now. */
+      uint8_t bat = 85;
+      session_append_obis_value(&w, code, &bat, 1);
+    } else {
+      /* Unknown OBIS code — emit empty value to keep the response well-formed. */
+      session_append_obis_value(&w, code, NULL, 0);
+    }
   }
 
-  rlp_list_end(&w, bm);
-
+  rlp_list_end(&w, outer);
   if (!rlp_writer_ok(&w)) return 0;
   return rlp_writer_len(&w);
+}
+
+/**
+ * @brief Build a WRITE_RESPONSE payload that echoes back the OBIS codes the
+ *        HES asked the device to write.
+ *
+ *  Response payload: RLP list [ uint8 success, list[ code_str, ... ] ]
+ *
+ *  Walks the WRITE_REQUEST payload to extract the codes (we do not store
+ *  them separately to keep memory low).
+ */
+static uint16_t session_build_write_response(const uint8_t *req_payload,
+                                              uint16_t req_len,
+                                              bool success,
+                                              uint8_t *out, uint16_t out_cap) {
+  rlp_reader_t r;
+  rlp_reader_init(&r, req_payload, req_len);
+  rlp_reader_t list_r;
+  if (!rlp_enter_list(&r, &list_r)) return 0;
+
+  rlp_writer_t w;
+  rlp_writer_init(&w, out, out_cap);
+  uint16_t outer = rlp_list_begin(&w);
+  rlp_encode_uint8(&w, success ? 1 : 0);
+  uint16_t codes = rlp_list_begin(&w);
+
+  while (!rlp_reader_done(&list_r)) {
+    rlp_reader_t pair;
+    if (!rlp_enter_list(&list_r, &pair)) return 0;
+    char code[16];
+    uint16_t code_len;
+    if (!rlp_decode_string(&pair, code, sizeof(code), &code_len)) return 0;
+    rlp_encode_string(&w, code);
+    /* Skip the value field of the pair — not needed for the response. */
+  }
+
+  rlp_list_end(&w, codes);
+  rlp_list_end(&w, outer);
+  if (!rlp_writer_ok(&w)) return 0;
+  return rlp_writer_len(&w);
+}
+
+/**
+ * @brief Look up OBIS_NEXT_WAKE in a WRITE_REQUEST payload and return its
+ *        uint64 BE value (Unix epoch seconds for the next agreed wake-up).
+ *
+ * @return true if found and decoded successfully.
+ */
+static bool session_extract_next_wake(const uint8_t *req_payload,
+                                       uint16_t req_len,
+                                       uint64_t *next_wake_out) {
+  rlp_reader_t r;
+  rlp_reader_init(&r, req_payload, req_len);
+  rlp_reader_t list_r;
+  if (!rlp_enter_list(&r, &list_r)) return false;
+
+  while (!rlp_reader_done(&list_r)) {
+    rlp_reader_t pair;
+    if (!rlp_enter_list(&list_r, &pair)) return false;
+
+    char code[16];
+    uint16_t code_len;
+    if (!rlp_decode_string(&pair, code, sizeof(code), &code_len)) return false;
+
+    uint8_t value[16];
+    uint16_t value_len;
+    if (!rlp_decode_bytes(&pair, value, sizeof(value), &value_len)) return false;
+
+    if (strcmp(code, OBIS_NEXT_WAKE) == 0 && value_len == 8) {
+      uint64_t v = 0;
+      for (int i = 0; i < 8; i++) v = (v << 8) | value[i];
+      *next_wake_out = v;
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -838,9 +932,12 @@ static uint16_t session_build_read_response(const uint8_t *req_payload,
  */
 void Com_session_start(void) {
   session.current_state = COM_SES_UDP_CTX;
-  session.after_send_ok = COM_SES_WAIT_DATA;
+  session.after_send_ok = COM_SES_KEEPALIVE_WAIT;
   session.failure_count = 0;
   session.needs_hard_reset = false;
+  session.seq = 0;
+  ses_ipv6[0] = '\0';
+  ses_last_activity_ms = HAL_GetTick();
 
   udp_process.current_state = COM_UDP_IDLE;
   udp_process.pdp_context_ready = false;
@@ -857,10 +954,30 @@ bool Com_is_session_done(void) {
 }
 
 /**
- * @brief Main session FSM — call repeatedly from main loop
+ * @brief Helper: send an envelope and transition to WAIT_SEND_OK with the
+ *        given after_send_ok target. Records activity timestamp for the
+ *        keepalive timer.
+ */
+static void session_send_and_wait(uint8_t msg_type, const uint8_t *payload,
+                                   uint16_t payload_len,
+                                   session_state_t after) {
+  if (session_send_envelope(msg_type, payload, payload_len)) {
+    ses_last_activity_ms = HAL_GetTick();
+    delay_start(session.state_timeout_timer, TIMEOUT_SEND);
+    session.after_send_ok = after;
+    session.current_state = COM_SES_WAIT_SEND_OK;
+  } else {
+    session_handle_failure();
+  }
+}
+
+/**
+ * @brief Main session FSM — call repeatedly from main loop.
  *
- * Flow: UDP_CTX → SEND_MSG(announce) → WAIT_SEND_OK → WAIT_DATA →
- *       CHECK_DATA_RDY → READ_DATA → PROCESS_MSG → (respond or done)
+ * Flow: UDP_CTX → FETCH_IPV6 → SEND_ANNOUNCE → WAIT_SEND_OK →
+ *       KEEPALIVE_WAIT (poll + 10s keepalive) → READ_HES_MSG →
+ *       PROCESS_HES_MSG (dispatch by msg_type) → SEND response →
+ *       back to KEEPALIVE_WAIT, until HES sends ACK → DONE.
  */
 void Com_session_process(void) {
   atcmd_desc_t cmd = (atcmd_desc_t)ATCMD_DESC_DEFAULT;
@@ -868,6 +985,7 @@ void Com_session_process(void) {
   /* Global timeout check */
   if (session.state_timeout_timer >= 0 &&
       session.current_state != COM_SES_IDLE &&
+      session.current_state != COM_SES_KEEPALIVE_WAIT &&
       session.current_state != COM_SES_DONE &&
       session.current_state != COM_SES_ERROR) {
     if (delay_has_finished(session.state_timeout_timer)) {
@@ -877,45 +995,86 @@ void Com_session_process(void) {
   }
 
   switch (session.current_state) {
-    /* --------------------------------------------------------- */
     case COM_SES_IDLE:
-      /* Waiting for Com_session_start() */
       break;
 
-    /* --------------------------------------------------------- */
+    /* ---- Establish UDP connection to HES ---- */
     case COM_SES_UDP_CTX: {
       int udp_result = Com_UDP_context_process();
-
       if (udp_result == COM_UDP_PROCESS_DONE) {
-        delay_start(session.state_delay_timer, 1000);
         delay_stop(session.state_timeout_timer);
-        session.current_state = COM_SES_SEND_MSG;
+        session.current_state = COM_SES_FETCH_IPV6;
       } else if (udp_result == COM_UDP_PROCESS_ERROR) {
         udp_process.current_state = COM_UDP_IDLE;
         session_handle_failure();
       }
     } break;
 
-    /* --------------------------------------------------------- */
-    case COM_SES_SEND_MSG: {
-      if (!delay_has_finished(session.state_delay_timer)) break;
-
-      /* First message: IP Announce (msg_type 0x04, no payload) */
-      if (session_send_envelope(MSG_TYPE_ANNOUNCE, NULL, 0)) {
-        delay_start(session.state_timeout_timer, TIMEOUT_SEND);
-        session.after_send_ok = COM_SES_WAIT_DATA;
-        session.current_state = COM_SES_WAIT_SEND_OK;
+    /* ---- Read current IPv6 assigned by the network ---- */
+    case COM_SES_FETCH_IPV6: {
+      cmd.id = CMD_AT_CGPADDR;
+      cmd.cmd_mode = AT_CMD_WRITE;
+      cmd.num_params[0] = 1;
+      cmd.nb_num_params = 1;
+      cmd.total_params = 1;
+      cmd.param_types[0] = AT_PARAM_NUM;
+      if (ATCore_send_cmd(&cmd)) {
+        delay_start(session.state_timeout_timer, 3000);
+        session.current_state = COM_SES_WAIT_FETCH_IPV6;
       } else {
         session_handle_failure();
       }
     } break;
 
-    /* --------------------------------------------------------- */
+    case COM_SES_WAIT_FETCH_IPV6: {
+      if (!ATCore_is_response_ready()) break;
+      delay_stop(session.state_timeout_timer);
+      ATCore_process_response();
+
+      char resp[BG95_RX_BUFFER_SIZE];
+      uint16_t resp_size;
+      ATCore_get_last_response(resp, sizeof(resp), &resp_size);
+
+      ses_ipv6[0] = '\0';
+      char *start = strchr(resp, '"');
+      if (start) {
+        start++;
+        char *end = strchr(start, '"');
+        if (end && end > start) {
+          uint16_t len = (uint16_t)(end - start);
+          if (len < sizeof(ses_ipv6)) {
+            memcpy(ses_ipv6, start, len);
+            ses_ipv6[len] = '\0';
+          }
+        }
+      }
+      session.current_state = COM_SES_SEND_ANNOUNCE;
+    } break;
+
+    /* ---- Announce: REGISTER_REQUEST with stored device_id (HES updates IP) ---- */
+    case COM_SES_SEND_ANNOUNCE: {
+      char imei[STORAGE_IMEI_LEN] = {0};
+      Storage_load_imei(imei, sizeof(imei));
+
+      rlp_writer_t w;
+      rlp_writer_init(&w, ses_payload_buf, sizeof(ses_payload_buf));
+      uint16_t bm = rlp_list_begin(&w);
+      rlp_encode_string(&w, imei);
+      rlp_encode_string(&w, ses_ipv6);
+      rlp_list_end(&w, bm);
+      ses_payload_len = rlp_writer_ok(&w) ? rlp_writer_len(&w) : 0;
+      if (ses_payload_len == 0) {
+        session_handle_failure();
+        break;
+      }
+      session_send_and_wait(MSG_TYPE_REGISTER_REQUEST, ses_payload_buf,
+                             ses_payload_len, COM_SES_KEEPALIVE_WAIT);
+    } break;
+
+    /* ---- Generic SEND_OK wait — transitions to session.after_send_ok ---- */
     case COM_SES_WAIT_SEND_OK: {
       if (!ATCore_is_response_ready()) break;
-
       ATCore_check_response();
-
       if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
         delay_stop(session.state_timeout_timer);
         delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
@@ -925,158 +1084,159 @@ void Com_session_process(void) {
       }
     } break;
 
-    /* --------------------------------------------------------- */
-    case COM_SES_WAIT_DATA: {
-      if (!delay_has_finished(session.state_delay_timer)) break;
-      session.current_state = COM_SES_CHECK_DATA_RDY;
+    /* ---- Wait for HES message; fire keepalive every 10s of silence ---- */
+    case COM_SES_KEEPALIVE_WAIT: {
+      if ((HAL_GetTick() - ses_last_activity_ms) >= SESSION_KEEPALIVE_PERIOD_MS) {
+        session.current_state = COM_SES_SEND_KEEPALIVE;
+        break;
+      }
+      if (delay_has_finished(session.state_delay_timer)) {
+        session.current_state = COM_SES_CHECK_HES_DATA;
+      }
     } break;
 
-    /* --------------------------------------------------------- */
-    case COM_SES_CHECK_DATA_RDY: {
+    case COM_SES_CHECK_HES_DATA: {
       cmd.id = CMD_AT_QIRD;
       cmd.cmd_mode = AT_CMD_WRITE_OPT;
       cmd.num_params[0] = BG95_CONNECT_ID;
       cmd.num_params[1] = 0;
-
       if (ATCore_send_cmd(&cmd)) {
         delay_start(session.state_timeout_timer, TIMEOUT_DATA_RDY);
-        session.current_state = COM_SES_WAIT_DATA_RDY;
+        session.current_state = COM_SES_CHECK_HES_DATA_WAIT;
       } else {
         delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
-        session.current_state = COM_SES_WAIT_DATA;
+        session.current_state = COM_SES_KEEPALIVE_WAIT;
       }
     } break;
 
-    /* --------------------------------------------------------- */
-    case COM_SES_WAIT_DATA_RDY: {
+    case COM_SES_CHECK_HES_DATA_WAIT: {
       if (!ATCore_is_response_ready()) break;
-
       if (!ATCore_process_response()) {
         delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
-        session.current_state = COM_SES_WAIT_DATA;
+        session.current_state = COM_SES_KEEPALIVE_WAIT;
         break;
       }
-
       if (ATCore_get_first_qird_value() > 0) {
         delay_stop(session.state_timeout_timer);
-        session.current_state = COM_SES_READ_DATA;
+        session.current_state = COM_SES_READ_HES_MSG;
       } else {
-        /* No data yet — poll again after delay */
-        delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
-        session.current_state = COM_SES_WAIT_DATA;
+        delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
+        session.current_state = COM_SES_KEEPALIVE_WAIT;
       }
     } break;
 
-    /* --------------------------------------------------------- */
-    case COM_SES_READ_DATA: {
+    case COM_SES_SEND_KEEPALIVE: {
+      session_send_and_wait(MSG_TYPE_KEEPALIVE, NULL, 0, COM_SES_KEEPALIVE_WAIT);
+    } break;
+
+    /* ---- Read incoming HES message ---- */
+    case COM_SES_READ_HES_MSG: {
       cmd.id = CMD_AT_QIRD;
       cmd.cmd_mode = AT_CMD_WRITE;
       cmd.num_params[0] = BG95_CONNECT_ID;
-
       if (ATCore_send_cmd(&cmd)) {
         delay_start(session.state_timeout_timer, TIMEOUT_DATA_REQUEST);
-        session.current_state = COM_SES_READ_DATA_WAIT;
+        session.current_state = COM_SES_READ_HES_MSG_WAIT;
       } else {
         session_handle_failure();
       }
     } break;
 
-    /* --------------------------------------------------------- */
-    case COM_SES_READ_DATA_WAIT: {
+    case COM_SES_READ_HES_MSG_WAIT: {
       if (!ATCore_is_response_ready()) break;
-
       ATCore_set_data_mode();
-
       if (ATCore_process_response()) {
         delay_stop(session.state_timeout_timer);
-        session.current_state = COM_SES_PROCESS_MSG;
+        session.current_state = COM_SES_PROCESS_HES_MSG;
       } else {
         session_handle_failure();
       }
     } break;
 
-    /* --------------------------------------------------------- */
-    case COM_SES_PROCESS_MSG: {
-      uint16_t response_size;
+    /* ---- Parse and dispatch HES message ---- */
+    case COM_SES_PROCESS_HES_MSG: {
+      uint16_t resp_size;
       char buf[BG95_RX_BUFFER_SIZE];
       envelope_t rx_env;
-
-      ATCore_get_last_response(buf, sizeof(buf), &response_size);
+      ATCore_get_last_response(buf, sizeof(buf), &resp_size);
 
       const uint8_t *payload_ptr = NULL;
       uint16_t payload_len = 0;
-
-      bool parsed = Parser_fParse_Envelope_w_payload(
-          (const uint8_t *)buf, response_size, &rx_env,
-          &payload_ptr, &payload_len);
-
-      if (!parsed) {
+      if (!Parser_fParse_Envelope_w_payload(
+              (const uint8_t *)buf, resp_size, &rx_env,
+              &payload_ptr, &payload_len)) {
         session_handle_failure();
         break;
       }
 
       switch (rx_env.msg_type) {
+        case MSG_TYPE_REGISTER_RESPONSE: {
+          /* HES confirmed the IP-update announce. Send our ACK back; the
+           * authoritative next_wake_time arrives later in WRITE_REQUEST. */
+          session_send_and_wait(MSG_TYPE_ACK, NULL, 0, COM_SES_KEEPALIVE_WAIT);
+        } break;
+
         case MSG_TYPE_HANDSHAKE: {
-          /* HES initiates session — respond with handshake response */
-          if (session_send_envelope(MSG_TYPE_HANDSHAKE_RESPONSE, NULL, 0)) {
-            delay_start(session.state_timeout_timer, TIMEOUT_SEND);
-            session.after_send_ok = COM_SES_WAIT_DATA;
-            session.current_state = COM_SES_WAIT_SEND_OK;
-          } else {
-            session_handle_failure();
-          }
+          session_send_and_wait(MSG_TYPE_HANDSHAKE_RESPONSE, NULL, 0,
+                                 COM_SES_KEEPALIVE_WAIT);
         } break;
 
         case MSG_TYPE_READ_REQUEST: {
-          /* Persist pulse count before sending — survives power loss */
           Storage_save_pulse_count(PulseCounter_get_count());
-
-          /* HES requests data — build and send read response */
           ses_payload_len = session_build_read_response(
               payload_ptr, payload_len,
               ses_payload_buf, sizeof(ses_payload_buf));
-
           if (ses_payload_len == 0) {
             session_handle_failure();
             break;
           }
+          session_send_and_wait(MSG_TYPE_READ_RESPONSE, ses_payload_buf,
+                                 ses_payload_len, COM_SES_KEEPALIVE_WAIT);
+        } break;
 
-          if (session_send_envelope(MSG_TYPE_READ_RESPONSE,
-                                     ses_payload_buf, ses_payload_len)) {
-            delay_start(session.state_timeout_timer, TIMEOUT_SEND);
-            session.after_send_ok = COM_SES_WAIT_DATA;
-            session.current_state = COM_SES_WAIT_SEND_OK;
-          } else {
-            session_handle_failure();
+        case MSG_TYPE_WRITE_REQUEST: {
+          uint64_t next_wake = 0;
+          bool got_wake = session_extract_next_wake(payload_ptr, payload_len,
+                                                     &next_wake);
+          if (got_wake) {
+            uint32_t now_hi, now_lo;
+            RTC_get_timestamp(&now_hi, &now_lo);
+            uint64_t now = ((uint64_t)now_hi << 32) | now_lo;
+            if (next_wake > now + COLD_START_OFFSET_SEC) {
+              uint64_t delta = next_wake - now - COLD_START_OFFSET_SEC;
+              if (delta < 86400ULL) pending_wake_seconds = (uint32_t)delta;
+            }
           }
+          ses_payload_len = session_build_write_response(
+              payload_ptr, payload_len, got_wake,
+              ses_payload_buf, sizeof(ses_payload_buf));
+          if (ses_payload_len == 0) {
+            session_handle_failure();
+            break;
+          }
+          session_send_and_wait(MSG_TYPE_WRITE_RESPONSE, ses_payload_buf,
+                                 ses_payload_len, COM_SES_KEEPALIVE_WAIT);
         } break;
 
         case MSG_TYPE_ACK: {
-          /* HES acknowledged — reset counter and complete session */
+          /* HES closed the session. Reset pulse counter checkpoint and
+           * mark the session as complete. */
           PulseCounter_reset();
           Storage_save_pulse_count(0);
           session.failure_count = 0;
           session.current_state = COM_SES_DONE;
         } break;
 
-        default: {
-          /* Unexpected message type — treat as failure */
+        default:
           session_handle_failure();
-        } break;
+          break;
       }
     } break;
 
-    /* --------------------------------------------------------- */
     case COM_SES_DONE:
-      /* Terminal state — session completed successfully */
-      break;
-
-    /* --------------------------------------------------------- */
     case COM_SES_ERROR:
-      /* Terminal state — unrecoverable error */
       break;
 
-    /* --------------------------------------------------------- */
     case COM_SES_RESTART_WAIT: {
       if (delay_has_finished(session.error_backoff_timer)) {
         session.current_state = COM_SES_UDP_CTX;
