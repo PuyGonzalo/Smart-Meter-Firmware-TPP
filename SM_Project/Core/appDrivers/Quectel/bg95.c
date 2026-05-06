@@ -222,6 +222,14 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
   bg95->txBuffer[cmd_size] = '\0';
   bg95->responseReady = false;
 
+  /* Clear pending error/idle flags and flush RDR before arming DMA.
+   * A pending ORE (caused by modem URCs arriving while DMA was stopped)
+   * would trigger the error ISR inside UART_Start_Receive_DMA the moment
+   * EIE is enabled, aborting the transfer before it starts. */
+  __HAL_UART_CLEAR_FLAG(bg95->huart,
+                        UART_CLEAR_OREF | UART_CLEAR_NEF |
+                        UART_CLEAR_FEF  | UART_CLEAR_PEF |
+                        UART_CLEAR_IDLEF);
   __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
@@ -255,6 +263,10 @@ bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data,
   bg95->responseReady = false;
   bg95->data_send_rdy = false;
 
+  __HAL_UART_CLEAR_FLAG(bg95->huart,
+                        UART_CLEAR_OREF | UART_CLEAR_NEF |
+                        UART_CLEAR_FEF  | UART_CLEAR_PEF |
+                        UART_CLEAR_IDLEF);
   __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
