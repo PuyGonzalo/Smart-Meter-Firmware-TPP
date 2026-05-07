@@ -17,7 +17,7 @@
                 "--connect",
                 "port=swd",
                 "--download",
-                "${command:cmake.launchTargetPath}",
+                "${workspaceFolder}/build/Smart-Meter-FW-TPP.elf",
                 "-hardRst",
                 "-rst",
                 "--start"
