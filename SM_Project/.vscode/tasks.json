@@ -4,7 +4,10 @@
         "options": {
             "shell": {
                 "executable": "cmd.exe",
-                "args": ["/d", "/c"]
+                "args": [
+                    "/d",
+                    "/c"
+                ]
             }
         }
     },
@@ -12,12 +15,12 @@
         {
             "type": "shell",
             "label": "CubeProg: Flash project (SWD)",
-            "command": "STM32_Programmer_CLI",
+            "command": "/opt/st/stm32cubeclt_1.19.0/STM32CubeProgrammer/bin/STM32_Programmer_CLI",
             "args": [
                 "--connect",
                 "port=swd",
                 "--download",
-                "${workspaceFolder}/build/Smart-Meter-FW-TPP.elf",
+                "${workspaceFolder}/build/Debug/Smart-Meter-FW-TPP.elf",
                 "-hardRst",
                 "-rst",
                 "--start"
@@ -39,14 +42,14 @@
         {
             "type": "cmake",
             "label": "CMake: clean rebuild",
-            "command": "cleanRebuild",
+            "command": "build",
             "targets": [
                 "all"
             ],
             "preset": "${command:cmake.activeBuildPresetName}",
             "group": "build",
             "problemMatcher": [],
-            "detail": "CMake template clean rebuild task"
+            "detail": "Configure if needed, then build"
         },
         {
             "type": "shell",
