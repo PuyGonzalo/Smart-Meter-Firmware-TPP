@@ -224,19 +224,26 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
   bg95->txBuffer[cmd_size] = '\0';
   bg95->responseReady = false;
 
-  /* Clear pending error/idle flags and flush RDR before arming DMA.
-   * A pending ORE (caused by modem URCs arriving while DMA was stopped)
-   * would trigger the error ISR inside UART_Start_Receive_DMA the moment
-   * EIE is enabled, aborting the transfer before it starts. */
+  /* Drain ALL pending RX bytes and clear every error flag before arming DMA.
+   * A single FLUSH_DRREGISTER only clears one byte; modem URCs arriving while
+   * DMA was idle can leave more bytes in the shift register.  If even one ORE
+   * is pending when UART_Start_Receive_DMA enables EIE, the error ISR fires,
+   * resets ReceptionType to STANDARD, and UART_Start_Receive_DMA re-arms
+   * DMAR anyway — so ReceiveToIdle_DMA returns HAL_ERROR with DMAR still set.
+   * HAL_UART_DMAStop then silently skips (DMAR=1 but RxState=READY) leaving
+   * DMAR armed permanently. */
   __HAL_UART_CLEAR_FLAG(bg95->huart,
                         UART_CLEAR_OREF | UART_CLEAR_NEF |
                         UART_CLEAR_FEF  | UART_CLEAR_PEF |
                         UART_CLEAR_IDLEF);
-  __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
+  while (__HAL_UART_GET_FLAG(bg95->huart, UART_FLAG_RXNE)) {
+    (void)bg95->huart->Instance->RDR;
+  }
+  __HAL_UART_CLEAR_FLAG(bg95->huart, UART_CLEAR_OREF);
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
                                     BG95_RX_BUFFER_SIZE)) != HAL_OK) {
-    HAL_UART_DMAStop(bg95->huart);
+    HAL_UART_Abort(bg95->huart);
     return BG95_SEND_CMD_ERROR;
   }
 
@@ -269,11 +276,14 @@ bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data,
                         UART_CLEAR_OREF | UART_CLEAR_NEF |
                         UART_CLEAR_FEF  | UART_CLEAR_PEF |
                         UART_CLEAR_IDLEF);
-  __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
+  while (__HAL_UART_GET_FLAG(bg95->huart, UART_FLAG_RXNE)) {
+    (void)bg95->huart->Instance->RDR;
+  }
+  __HAL_UART_CLEAR_FLAG(bg95->huart, UART_CLEAR_OREF);
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
                                     BG95_RX_BUFFER_SIZE)) != HAL_OK) {
-    HAL_UART_DMAStop(bg95->huart);
+    HAL_UART_Abort(bg95->huart);
     return BG95_SEND_CMD_ERROR;
   }
 
@@ -385,13 +395,16 @@ char *BG95_get_last_response(BG95_t *bg95) {
 void BG95_reset_rx(BG95_t *bg95) {
   if (bg95 == NULL) return;
 
-  HAL_UART_DMAStop(bg95->huart);
+  /* HAL_UART_Abort unconditionally stops any in-progress DMA, clears all
+   * error flags, flushes RDR, and forces RxState/ReceptionType to
+   * READY/STANDARD — regardless of what DMAR or RxState currently say.
+   * HAL_UART_DMAStop is conditional (requires DMAR=1 AND RxState=BUSY_RX),
+   * so it silently fails when the error ISR already cleared RxState to READY
+   * but UART_Start_Receive_DMA had already re-armed DMAR afterwards. */
+  HAL_UART_Abort(bg95->huart);
 
-  /* Clear UART error flags — crucial on L0: an ORE (overrun) accumulated
-   * during boot URC flood will block subsequent idle-line detection. */
-  __HAL_UART_CLEAR_FLAG(bg95->huart,
-                        UART_CLEAR_OREF | UART_CLEAR_NEF |
-                        UART_CLEAR_FEF | UART_CLEAR_PEF);
+  /* HAL_UART_Abort does not clear the IDLE flag */
+  __HAL_UART_CLEAR_FLAG(bg95->huart, UART_CLEAR_IDLEF);
 
   bg95->responseReady = false;
   bg95->responseStatus = BG95_RESP_NOT_RECEIVED;
