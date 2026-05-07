@@ -34,15 +34,15 @@
 #define DEBUG_FAST_TIMEOUTS
 
 #ifdef DEBUG_FAST_TIMEOUTS
-/* Fast timeouts for testing */
-#define RESTART_DELAY_BASE_MS 200   // Base delay before restart (was 1000)
-#define RESTART_DELAY_MAX_MS 3000   // Max restart delay cap (was 30000)
-#define GENERIC_RETRY_DELAY_MS 500  // Generic retry delay (was 10000)
+#define RESTART_DELAY_BASE_MS    200
+#define RESTART_DELAY_MAX_MS     3000
+#define GENERIC_RETRY_DELAY_MS   500
+#define MAX_FAILURES_HARD_RESET  10   /* ~66s total before hard reset */
 #else
-/* Production timeouts */
-#define RESTART_DELAY_BASE_MS 1000
-#define RESTART_DELAY_MAX_MS 30000
-#define GENERIC_RETRY_DELAY_MS 10000
+#define RESTART_DELAY_BASE_MS    1000
+#define RESTART_DELAY_MAX_MS     5000  /* cap at 5s so 5 failures fit in <120s global timeout */
+#define GENERIC_RETRY_DELAY_MS   10000
+#define MAX_FAILURES_HARD_RESET  5    /* ~61s total before hard reset */
 #endif
 
 /* FSM State Variables */
@@ -57,7 +57,7 @@ static udp_fsm_t udp_process = {.current_state = COM_UDP_IDLE,
                                 .previous_state = COM_UDP_IDLE,
                                 .pdp_context_ready = false,
                                 .retry_count = 0,
-                                .max_retries = 3,
+                                .max_retries = 1,
                                 .activation_failures = 0,
                                 .last_attempt_time = 0,
                                 .state_timeout_timer = -1};
@@ -166,6 +166,7 @@ static void handle_failure(void) {
 
   if (register_process.failure_count >= MAX_FAILURES_HARD_RESET) {
     register_process.needs_hard_reset = true;
+    register_process.current_state = COM_REG_RESTART_WAIT;  /* idle state; blocking loop exits on needs_hard_reset */
     return;
   }
 
@@ -198,14 +199,14 @@ bool Com_register_device_blocking(uint32_t timeout_ms) {
     // Run one iteration of the FSM
     Com_register_device_process();
 
+    // Check for fatal failure first (takes priority over any state)
+    if (register_process.needs_hard_reset) {
+      return false;
+    }
+
     // Check for successful completion
     if (register_process.current_state == COM_REG_FINISHED) {
       return true;
-    }
-
-    // Check for fatal failure
-    if (register_process.needs_hard_reset) {
-      return false;
     }
 
     // Check for global timeout
@@ -269,7 +270,7 @@ void Com_register_device_process(void) {
       cmd.param_types[0] = AT_PARAM_NUM;
 
       if (ATCore_send_cmd(&cmd)) {
-        delay_start(register_process.state_timeout_timer, 3000);
+        delay_start(register_process.state_timeout_timer, TIMEOUT_CGPADDR);
         register_process.current_state = COM_REG_WAIT_FETCH_IPV6;
       } else {
         handle_failure();
@@ -278,6 +279,7 @@ void Com_register_device_process(void) {
 
     /* --------------------------------------------------------- */
     case COM_REG_WAIT_FETCH_IPV6: {
+      if (delay_has_finished(register_process.state_timeout_timer)) { handle_failure(); break; }
       if (!ATCore_is_response_ready()) break;
 
       delay_stop(register_process.state_timeout_timer);
@@ -347,6 +349,7 @@ void Com_register_device_process(void) {
 
     /* --------------------------------------------------------- */
     case COM_REG_WAIT_SEND_OK: {
+      if (delay_has_finished(register_process.state_timeout_timer)) { handle_failure(); break; }
       if (!ATCore_is_response_ready()) break;
 
       ATCore_check_response();
@@ -396,6 +399,7 @@ void Com_register_device_process(void) {
 
     /* --------------------------------------------------------- */
     case COM_REG_WAIT_DATA_RDY: {
+      if (delay_has_finished(register_process.state_timeout_timer)) { handle_failure(); break; }
       if (!ATCore_is_response_ready()) break;
 
       if (!ATCore_process_response()) {
@@ -429,6 +433,7 @@ void Com_register_device_process(void) {
 
     /* --------------------------------------------------------- */
     case COM_REG_DATA_REQUEST_WAIT: {
+      if (delay_has_finished(register_process.state_timeout_timer)) { handle_failure(); break; }
       if (!ATCore_is_response_ready()) break;
 
       ATCore_set_data_mode();
@@ -527,6 +532,7 @@ void Com_register_device_process(void) {
 
     /* --------------------------------------------------------- */
     case COM_REG_WAIT_ACK_SEND: {
+      if (delay_has_finished(register_process.state_timeout_timer)) { handle_failure(); break; }
       if (!ATCore_is_response_ready()) break;
 
       ATCore_check_response();
@@ -534,6 +540,7 @@ void Com_register_device_process(void) {
       if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
         register_process.failure_count = 0;
         delay_stop(register_process.state_timeout_timer);
+        delay_start(register_process.state_timeout_timer, TIMEOUT_DRAIN_WINDOW);
         delay_start(register_process.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
         register_process.current_state = COM_REG_DRAIN_POLL;
       } else {
@@ -554,6 +561,7 @@ void Com_register_device_process(void) {
         delay_start(register_process.state_delay_timer, TIMEOUT_DATA_RDY);
         register_process.current_state = COM_REG_DRAIN_POLL_WAIT;
       } else {
+        ATCore_reset_rx();
         register_process.current_state = COM_REG_FINISHED;
       }
     } break;
@@ -561,6 +569,7 @@ void Com_register_device_process(void) {
     /* --------------------------------------------------------- */
     case COM_REG_DRAIN_POLL_WAIT: {
       if (delay_has_finished(register_process.state_delay_timer)) {
+        ATCore_reset_rx();
         register_process.current_state = COM_REG_FINISHED;
         break;
       }
@@ -577,9 +586,14 @@ void Com_register_device_process(void) {
           delay_start(register_process.state_delay_timer, TIMEOUT_DATA_REQUEST);
           register_process.current_state = COM_REG_DRAIN_READ_WAIT;
         } else {
+          ATCore_reset_rx();
           register_process.current_state = COM_REG_FINISHED;
         }
+      } else if (!delay_has_finished(register_process.state_timeout_timer)) {
+        delay_start(register_process.state_delay_timer, TIMEOUT_DRAIN_RETRY);
+        register_process.current_state = COM_REG_DRAIN_POLL;
       } else {
+        ATCore_reset_rx();
         register_process.current_state = COM_REG_FINISHED;
       }
     } break;
@@ -587,6 +601,7 @@ void Com_register_device_process(void) {
     /* --------------------------------------------------------- */
     case COM_REG_DRAIN_READ_WAIT: {
       if (delay_has_finished(register_process.state_delay_timer)) {
+        ATCore_reset_rx();
         register_process.current_state = COM_REG_FINISHED;
         break;
       }
@@ -595,6 +610,7 @@ void Com_register_device_process(void) {
       ATCore_set_data_mode();
       ATCore_process_response();  /* discard — data not needed */
       delay_stop(register_process.state_delay_timer);
+      ATCore_reset_rx();
       register_process.current_state = COM_REG_FINISHED;
     } break;
 
@@ -645,7 +661,7 @@ int Com_UDP_context_process() {
         cmd.id = CMD_AT_QIACT;
         cmd.cmd_mode = AT_CMD_READ;
         if (ATCore_send_cmd(&cmd)) {
-          delay_start(udp_process.state_timeout_timer, TIMEOUT_QIACT);
+          delay_start(udp_process.state_timeout_timer, TIMEOUT_QIACT_QUERY);
           udp_process.current_state = COM_UDP_QIACT_CHECK;
         }
       } else {
@@ -673,7 +689,7 @@ int Com_UDP_context_process() {
         cmd.id = CMD_AT_QIACT;
         cmd.cmd_mode = AT_CMD_WRITE_DEFAULT;
         if (ATCore_send_cmd(&cmd)) {
-          delay_start(udp_process.state_timeout_timer, TIMEOUT_QIACT);
+          delay_start(udp_process.state_timeout_timer, TIMEOUT_QIACT_ACTIVATE);
           udp_process.current_state = COM_UDP_QIACT_WAIT;
         }
       } else {

@@ -131,7 +131,7 @@ typedef enum {
 /* Cold-start budget: device wakes this many seconds before the agreed
  * next_wake_time so the BG95 has time to attach + open PDP + send announce.
  * Refine empirically once we have field measurements. */
-#define COLD_START_OFFSET_SEC  120U
+#define COLD_START_OFFSET_SEC  45U
 
 /* Periodic session keepalive cadence and total wait timeout (ms) */
 #define SESSION_KEEPALIVE_PERIOD_MS  10000U
@@ -148,16 +148,18 @@ typedef struct {
   int32_t error_backoff_timer;
 } session_fsm_t;
 
-/* State timeout values (milliseconds) */
-#define TIMEOUT_INIT              5000
-#define TIMEOUT_UDP_CTX           1800   // 3 minutes for full UDP setup
-#define TIMEOUT_QIACT             1500   // 150 seconds for PDP activation
-#define TIMEOUT_QIOPEN            1500   // 150 seconds for socket open
-#define TIMEOUT_SEND              5000
-#define TIMEOUT_WAIT_RESPONSE     3000
-#define TIMEOUT_DATA_RDY          5000    // 1 minute for data ready check
-#define TIMEOUT_DATA_REQUEST      1000
-#define MAX_FAILURES_HARD_RESET   10     // Hard reset after this many failures
+/* Per-command timeouts (ms) — values from Quectel BG95 TCP/IP Application Note v1.4 */
+#define TIMEOUT_INIT              5000    /* AT\r\n boot polling */
+#define TIMEOUT_QIACT_QUERY       2000    /* AT+QIACT? — local modem query (~300 ms per doc) */
+#define TIMEOUT_QIACT_ACTIVATE    150000  /* AT+QIACT=n — doc: 150 s, determined by network */
+#define TIMEOUT_QIOPEN            150000  /* AT+QIOPEN  — doc: 150 s, determined by network */
+#define TIMEOUT_SEND              5000    /* AT+QISENDEX — doc: 120 s, but UDP SEND_OK is local */
+#define TIMEOUT_WAIT_RESPONSE     3000    /* generic inter-state delay */
+#define TIMEOUT_CGPADDR           3000    /* AT+CGPADDR  — local PDP context query */
+#define TIMEOUT_DATA_RDY          5000    /* AT+QIRD=x,0 — local buffer length query */
+#define TIMEOUT_DATA_REQUEST      2000    /* AT+QIRD=x   — local buffer read */
+#define TIMEOUT_DRAIN_WINDOW      6000   /* total window to drain HES confirm ACK after our ACK */
+#define TIMEOUT_DRAIN_RETRY       500    /* inter-poll delay when QIRD returns 0 */
 
 void Com_Init(void);
 void Com_network_connection_process();

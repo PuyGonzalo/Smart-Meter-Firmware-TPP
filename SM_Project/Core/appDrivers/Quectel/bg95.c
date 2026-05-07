@@ -13,10 +13,12 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "main.h"
 #include "stm32l0xx_hal_def.h"
+#include "stm32l0xx_hal_dma.h"
 #include "stm32l0xx_hal_uart.h"
 #include "stm32l0xx_hal_uart_ex.h"
 

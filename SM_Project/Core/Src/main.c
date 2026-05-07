@@ -43,7 +43,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define REGISTRATION_TIMEOUT_MS  120000  /* Max time for device registration (2 min) */
+#define REGISTRATION_TIMEOUT_MS  720000  /* Max time for device registration (12 min: covers QIACT 150s + QIOPEN 150s with retries) */
 #define SESSION_PERIOD_SEC       60      /* Interval between HES sessions */
 
 /* Uncomment to wipe EEPROM on boot (forces re-registration) */
@@ -236,7 +236,9 @@ int main(void)
   }
 
   if (!Storage_is_registered()) {
-    Com_register_device_blocking(REGISTRATION_TIMEOUT_MS);
+    if (!Com_register_device_blocking(REGISTRATION_TIMEOUT_MS)) {
+      NVIC_SystemReset();
+    }
   }
 
   /* If HES provided a wake-up time during registration, honor it before the
