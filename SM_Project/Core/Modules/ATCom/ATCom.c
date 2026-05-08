@@ -51,7 +51,8 @@ static registration_fsm_t register_process = {.current_state = COM_REG_INIT,
                                               .needs_hard_reset = false,
                                               .state_timeout_timer = -1,
                                               .state_delay_timer = -1,
-                                              .error_backoff_timer = -1};
+                                              .error_backoff_timer = -1,
+                                              .poll_start_tick_ms = 0};
 
 static udp_fsm_t udp_process = {.current_state = COM_UDP_IDLE,
                                 .previous_state = COM_UDP_IDLE,
@@ -71,13 +72,16 @@ static envelope_t envp = {
 static uint16_t envp_size = 0;
 
 static session_fsm_t session = {.current_state = COM_SES_IDLE,
-                                .after_send_ok = COM_SES_KEEPALIVE_WAIT,
+                                .after_send_ok = COM_SES_POLL_WAIT,
                                 .failure_count = 0,
                                 .needs_hard_reset = false,
                                 .seq = 0,
                                 .state_timeout_timer = -1,
                                 .state_delay_timer = -1,
-                                .error_backoff_timer = -1};
+                                .error_backoff_timer = -1,
+                                .last_msg_type = 0,
+                                .last_payload_len = 0,
+                                .poll_start_tick_ms = 0};
 
 /* Buffer for session payload building */
 static uint8_t ses_payload_buf[96];
@@ -86,9 +90,11 @@ static uint16_t ses_payload_len = 0;
 /* IPv6 fetched at the start of each session for the announce */
 static char ses_ipv6[48] = {0};
 
-/* HAL_GetTick() value at the moment of last sent activity (announce, response,
- * or keepalive). Used to decide when to fire the next keepalive. */
-static uint32_t ses_last_activity_ms = 0;
+#ifdef DEBUG_SESSION_START
+/* True once SESSION_START_REQUEST has been sent; used to distinguish the
+ * registration ACK (→ send 0xF0) from the session-done ACK (→ DONE). */
+static bool ses_debug_start_sent = false;
+#endif
 
 /* IPv6 address fetched after PDP context is up, used in registration payload */
 static char reg_ipv6[48];
@@ -356,6 +362,7 @@ void Com_register_device_process(void) {
 
       if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
         delay_stop(register_process.state_timeout_timer);
+        register_process.poll_start_tick_ms = HAL_GetTick();
         delay_start(register_process.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
         register_process.current_state = COM_REG_WAIT_SEND;
       } else {
@@ -410,6 +417,10 @@ void Com_register_device_process(void) {
 
       if (ATCore_get_first_qird_value() > 0) {
         register_process.current_state = COM_REG_DATA_REQUEST;
+      } else if ((HAL_GetTick() - register_process.poll_start_tick_ms) >= POLL_RESEND_TIMEOUT_MS) {
+        register_process.poll_start_tick_ms = HAL_GetTick();
+        delay_start(register_process.state_delay_timer, GENERIC_RETRY_DELAY_MS);
+        register_process.current_state = COM_REG_SEND;
       } else {
         delay_start(register_process.state_timeout_timer,
                     GENERIC_RETRY_DELAY_MS);
@@ -1007,12 +1018,17 @@ static bool session_extract_next_wake(const uint8_t *req_payload,
 void Com_session_start(void) {
   ATCore_reset_rx();  /* Clear any ORE/URCs accumulated since last DMA arm */
   session.current_state = COM_SES_UDP_CTX;
-  session.after_send_ok = COM_SES_KEEPALIVE_WAIT;
+  session.after_send_ok = COM_SES_POLL_WAIT;
   session.failure_count = 0;
   session.needs_hard_reset = false;
   session.seq = 0;
   ses_ipv6[0] = '\0';
-  ses_last_activity_ms = HAL_GetTick();
+  session.last_msg_type = 0;
+  session.last_payload_len = 0;
+  session.poll_start_tick_ms = 0;
+#ifdef DEBUG_SESSION_START
+  ses_debug_start_sent = false;
+#endif
 
   udp_process.current_state = COM_UDP_IDLE;
   udp_process.pdp_context_ready = false;
@@ -1030,14 +1046,14 @@ bool Com_is_session_done(void) {
 
 /**
  * @brief Helper: send an envelope and transition to WAIT_SEND_OK with the
- *        given after_send_ok target. Records activity timestamp for the
- *        keepalive timer.
+ *        given after_send_ok target.
  */
 static void session_send_and_wait(uint8_t msg_type, const uint8_t *payload,
                                    uint16_t payload_len,
                                    session_state_t after) {
   if (session_send_envelope(msg_type, payload, payload_len)) {
-    ses_last_activity_ms = HAL_GetTick();
+    session.last_msg_type = msg_type;
+    session.last_payload_len = payload_len;
     delay_start(session.state_timeout_timer, TIMEOUT_SEND);
     session.after_send_ok = after;
     session.current_state = COM_SES_WAIT_SEND_OK;
@@ -1049,8 +1065,8 @@ static void session_send_and_wait(uint8_t msg_type, const uint8_t *payload,
 /**
  * @brief Main session FSM — call repeatedly from main loop.
  *
- * Flow: UDP_CTX → FETCH_IPV6 → SEND_ANNOUNCE → WAIT_SEND_OK →
- *       KEEPALIVE_WAIT (poll + 10s keepalive) → READ_HES_MSG →
+ * Flow: UDP_CTX → FETCH_IPV6 → SEND_ANNOUNCE → [SESSION_START_DEBUG →]
+ *       WAIT_SEND_OK → KEEPALIVE_WAIT (poll) → READ_HES_MSG →
  *       PROCESS_HES_MSG (dispatch by msg_type) → SEND response →
  *       back to KEEPALIVE_WAIT, until HES sends ACK → DONE.
  */
@@ -1060,7 +1076,7 @@ void Com_session_process(void) {
   /* Global timeout check */
   if (session.state_timeout_timer >= 0 &&
       session.current_state != COM_SES_IDLE &&
-      session.current_state != COM_SES_KEEPALIVE_WAIT &&
+      session.current_state != COM_SES_POLL_WAIT &&
       session.current_state != COM_SES_DONE &&
       session.current_state != COM_SES_ERROR) {
     if (delay_has_finished(session.state_timeout_timer)) {
@@ -1143,7 +1159,7 @@ void Com_session_process(void) {
         break;
       }
       session_send_and_wait(MSG_TYPE_REGISTER_REQUEST, ses_payload_buf,
-                             ses_payload_len, COM_SES_KEEPALIVE_WAIT);
+                             ses_payload_len, COM_SES_POLL_WAIT);
     } break;
 
     /* ---- Generic SEND_OK wait — transitions to session.after_send_ok ---- */
@@ -1152,6 +1168,7 @@ void Com_session_process(void) {
       ATCore_check_response();
       if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
         delay_stop(session.state_timeout_timer);
+        session.poll_start_tick_ms = HAL_GetTick();
         delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
         session.current_state = session.after_send_ok;
       } else {
@@ -1159,12 +1176,8 @@ void Com_session_process(void) {
       }
     } break;
 
-    /* ---- Wait for HES message; fire keepalive every 10s of silence ---- */
-    case COM_SES_KEEPALIVE_WAIT: {
-      if ((HAL_GetTick() - ses_last_activity_ms) >= SESSION_KEEPALIVE_PERIOD_MS) {
-        session.current_state = COM_SES_SEND_KEEPALIVE;
-        break;
-      }
+    /* ---- Wait for HES message, then poll ---- */
+    case COM_SES_POLL_WAIT: {
       if (delay_has_finished(session.state_delay_timer)) {
         session.current_state = COM_SES_CHECK_HES_DATA;
       }
@@ -1180,7 +1193,7 @@ void Com_session_process(void) {
         session.current_state = COM_SES_CHECK_HES_DATA_WAIT;
       } else {
         delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
-        session.current_state = COM_SES_KEEPALIVE_WAIT;
+        session.current_state = COM_SES_POLL_WAIT;
       }
     } break;
 
@@ -1188,20 +1201,22 @@ void Com_session_process(void) {
       if (!ATCore_is_response_ready()) break;
       if (!ATCore_process_response()) {
         delay_start(session.state_delay_timer, GENERIC_RETRY_DELAY_MS);
-        session.current_state = COM_SES_KEEPALIVE_WAIT;
+        session.current_state = COM_SES_POLL_WAIT;
         break;
       }
       if (ATCore_get_first_qird_value() > 0) {
         delay_stop(session.state_timeout_timer);
         session.current_state = COM_SES_READ_HES_MSG;
+      } else if ((HAL_GetTick() - session.poll_start_tick_ms) >= POLL_RESEND_TIMEOUT_MS) {
+        session.poll_start_tick_ms = HAL_GetTick();
+        session_send_and_wait(session.last_msg_type,
+                              session.last_payload_len > 0 ? ses_payload_buf : NULL,
+                              session.last_payload_len,
+                              COM_SES_POLL_WAIT);
       } else {
         delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
-        session.current_state = COM_SES_KEEPALIVE_WAIT;
+        session.current_state = COM_SES_POLL_WAIT;
       }
-    } break;
-
-    case COM_SES_SEND_KEEPALIVE: {
-      session_send_and_wait(MSG_TYPE_KEEPALIVE, NULL, 0, COM_SES_KEEPALIVE_WAIT);
     } break;
 
     /* ---- Read incoming HES message ---- */
@@ -1246,14 +1261,13 @@ void Com_session_process(void) {
 
       switch (rx_env.msg_type) {
         case MSG_TYPE_REGISTER_RESPONSE: {
-          /* HES confirmed the IP-update announce. Send our ACK back; the
-           * authoritative next_wake_time arrives later in WRITE_REQUEST. */
-          session_send_and_wait(MSG_TYPE_ACK, NULL, 0, COM_SES_KEEPALIVE_WAIT);
+          /* HES confirmed the IP-update announce. Send our ACK back. */
+          session_send_and_wait(MSG_TYPE_ACK, NULL, 0, COM_SES_POLL_WAIT);
         } break;
 
         case MSG_TYPE_HANDSHAKE: {
           session_send_and_wait(MSG_TYPE_HANDSHAKE_RESPONSE, NULL, 0,
-                                 COM_SES_KEEPALIVE_WAIT);
+                                 COM_SES_POLL_WAIT);
         } break;
 
         case MSG_TYPE_READ_REQUEST: {
@@ -1266,7 +1280,7 @@ void Com_session_process(void) {
             break;
           }
           session_send_and_wait(MSG_TYPE_READ_RESPONSE, ses_payload_buf,
-                                 ses_payload_len, COM_SES_KEEPALIVE_WAIT);
+                                 ses_payload_len, COM_SES_POLL_WAIT);
         } break;
 
         case MSG_TYPE_WRITE_REQUEST: {
@@ -1290,10 +1304,18 @@ void Com_session_process(void) {
             break;
           }
           session_send_and_wait(MSG_TYPE_WRITE_RESPONSE, ses_payload_buf,
-                                 ses_payload_len, COM_SES_KEEPALIVE_WAIT);
+                                 ses_payload_len, COM_SES_POLL_WAIT);
         } break;
 
         case MSG_TYPE_ACK: {
+#ifdef DEBUG_SESSION_START
+          if (!ses_debug_start_sent) {
+            ses_debug_start_sent = true;
+            session_send_and_wait(MSG_TYPE_SESSION_START_REQUEST, NULL, 0,
+                                   COM_SES_POLL_WAIT);
+            break;
+          }
+#endif
           /* HES closed the session. Reset pulse counter checkpoint and
            * mark the session as complete. */
           PulseCounter_reset();

@@ -18,6 +18,13 @@
 
 #include "at_core.h"
 
+/* ============================================================================
+ * DEBUG CONFIGURATION - Comment out for production values
+ * ============================================================================
+ */
+/* Debug-only: device-initiated periodic session. Remove for production. */
+#define DEBUG_SESSION_START
+
 typedef enum {
   COM_REG_INIT,
   COM_REG_UDP_CTX,
@@ -47,6 +54,7 @@ typedef struct {
   int32_t state_timeout_timer;
   int32_t state_delay_timer;
   int32_t error_backoff_timer;
+  uint32_t poll_start_tick_ms;  /* HAL_GetTick() when polling started (resend guard) */
 } registration_fsm_t;
 
 typedef enum {
@@ -85,10 +93,9 @@ typedef enum {
   COM_SES_WAIT_SEND_OK,
 
   /* Keepalive loop while waiting for next HES message */
-  COM_SES_KEEPALIVE_WAIT,        /* Idle wait between polls / keepalives */
+  COM_SES_POLL_WAIT,             /* Idle wait between polls */
   COM_SES_CHECK_HES_DATA,        /* AT+QIRD=ID,0 to check if data available */
   COM_SES_CHECK_HES_DATA_WAIT,   /* Wait QIRD len=0 response */
-  COM_SES_SEND_KEEPALIVE,        /* Send KEEPALIVE envelope */
 
   /* Reading & processing HES message */
   COM_SES_READ_HES_MSG,          /* AT+QIRD with size to read bytes */
@@ -105,7 +112,6 @@ typedef enum {
 #define MSG_TYPE_HANDSHAKE_RESPONSE 0x01
 #define MSG_TYPE_REGISTER_REQUEST   0x02
 #define MSG_TYPE_REGISTER_RESPONSE  0x03
-#define MSG_TYPE_KEEPALIVE          0x05
 #define MSG_TYPE_READ_REQUEST       0x0A
 #define MSG_TYPE_READ_RESPONSE      0x0B
 #define MSG_TYPE_WRITE_REQUEST      0x14
@@ -115,6 +121,9 @@ typedef enum {
 #define MSG_TYPE_ACTION_REQUEST     0x28
 #define MSG_TYPE_ACTION_RESPONSE    0x29
 #define MSG_TYPE_ACK                0xFF
+#ifdef DEBUG_SESSION_START
+#define MSG_TYPE_SESSION_START_REQUEST  0xF0
+#endif
 
 /* OBIS operation codes */
 #define OBIS_OP_READ    0x00
@@ -133,9 +142,6 @@ typedef enum {
  * Refine empirically once we have field measurements. */
 #define COLD_START_OFFSET_SEC  45U
 
-/* Periodic session keepalive cadence and total wait timeout (ms) */
-#define SESSION_KEEPALIVE_PERIOD_MS  10000U
-#define SESSION_HES_WAIT_TIMEOUT_MS  60000U
 
 typedef struct {
   session_state_t current_state;
@@ -146,6 +152,9 @@ typedef struct {
   int32_t state_timeout_timer;
   int32_t state_delay_timer;
   int32_t error_backoff_timer;
+  uint8_t last_msg_type;           /* msg_type of last sent envelope (for resend) */
+  uint16_t last_payload_len;       /* payload len of last sent envelope (0 = NULL) */
+  uint32_t poll_start_tick_ms;     /* HAL_GetTick() when polling started (resend guard) */
 } session_fsm_t;
 
 /* Per-command timeouts (ms) — values from Quectel BG95 TCP/IP Application Note v1.4 */
@@ -158,6 +167,7 @@ typedef struct {
 #define TIMEOUT_CGPADDR           3000    /* AT+CGPADDR  — local PDP context query */
 #define TIMEOUT_DATA_RDY          5000    /* AT+QIRD=x,0 — local buffer length query */
 #define TIMEOUT_DATA_REQUEST      2000    /* AT+QIRD=x   — local buffer read */
+#define POLL_RESEND_TIMEOUT_MS    30000U  /* Resend last msg if no HES response after 30 s */
 #define TIMEOUT_DRAIN_WINDOW      6000   /* total window to drain HES confirm ACK after our ACK */
 #define TIMEOUT_DRAIN_RETRY       500    /* inter-poll delay when QIRD returns 0 */
 
