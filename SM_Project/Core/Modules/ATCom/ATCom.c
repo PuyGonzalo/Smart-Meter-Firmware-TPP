@@ -81,7 +81,8 @@ static session_fsm_t session = {.current_state = COM_SES_IDLE,
                                 .error_backoff_timer = -1,
                                 .last_msg_type = 0,
                                 .last_payload_len = 0,
-                                .poll_start_tick_ms = 0};
+                                .poll_start_tick_ms = 0,
+                                .can_resend = false};
 
 /* Buffer for session payload building */
 static uint8_t ses_payload_buf[96];
@@ -90,14 +91,11 @@ static uint16_t ses_payload_len = 0;
 /* IPv6 fetched at the start of each session for the announce */
 static char ses_ipv6[48] = {0};
 
-#ifdef DEBUG_SESSION_START
-/* True once SESSION_START_REQUEST has been sent; used to distinguish the
- * registration ACK (→ send 0xF0) from the session-done ACK (→ DONE). */
-static bool ses_debug_start_sent = false;
-#endif
 
 /* IPv6 address fetched after PDP context is up, used in registration payload */
 static char reg_ipv6[48];
+/* Last IPv6 successfully announced to HES — persists across sessions in RAM */
+static char last_announced_ipv6[48] = {0};
 /* Registration payload buffer (IMEI string + IPv6 string, RLP-encoded) */
 static uint8_t reg_payload_buf[80];
 static uint16_t reg_payload_len = 0;
@@ -116,6 +114,8 @@ static bool session_send_envelope(uint8_t msg_type, const uint8_t *payload,
 static uint16_t session_build_read_response(const uint8_t *req_payload,
                                              uint16_t req_len,
                                              uint8_t *out, uint16_t out_cap);
+static void session_dispatch_hes_msg(uint8_t msg_type, const uint8_t *payload_ptr,
+                                      uint16_t payload_len);
 
 /**
  * @brief Initialize Communication Module
@@ -1026,9 +1026,7 @@ void Com_session_start(void) {
   session.last_msg_type = 0;
   session.last_payload_len = 0;
   session.poll_start_tick_ms = 0;
-#ifdef DEBUG_SESSION_START
-  ses_debug_start_sent = false;
-#endif
+  session.can_resend = false;
 
   udp_process.current_state = COM_UDP_IDLE;
   udp_process.pdp_context_ready = false;
@@ -1054,12 +1052,89 @@ static void session_send_and_wait(uint8_t msg_type, const uint8_t *payload,
   if (session_send_envelope(msg_type, payload, payload_len)) {
     session.last_msg_type = msg_type;
     session.last_payload_len = payload_len;
+    session.can_resend = true;
     delay_start(session.state_timeout_timer, TIMEOUT_SEND);
     session.after_send_ok = after;
     session.current_state = COM_SES_WAIT_SEND_OK;
   } else {
     session_handle_failure();
   }
+}
+
+typedef void (*msg_handler_t)(const uint8_t *, uint16_t);
+
+static void handle_register_response(const uint8_t *p, uint16_t len) {
+  (void)p; (void)len;
+  session_send_and_wait(MSG_TYPE_ACK, NULL, 0, COM_SES_POLL_WAIT);
+}
+
+static void handle_handshake(const uint8_t *p, uint16_t len) {
+  (void)p; (void)len;
+  session_send_and_wait(MSG_TYPE_HANDSHAKE_RESPONSE, NULL, 0, COM_SES_POLL_WAIT);
+}
+
+static void handle_read_request(const uint8_t *payload_ptr, uint16_t payload_len) {
+  Storage_save_pulse_count(PulseCounter_get_count());
+  ses_payload_len = session_build_read_response(
+      payload_ptr, payload_len, ses_payload_buf, sizeof(ses_payload_buf));
+  if (ses_payload_len == 0) {
+    session_handle_failure();
+    return;
+  }
+  session_send_and_wait(MSG_TYPE_READ_RESPONSE, ses_payload_buf,
+                         ses_payload_len, COM_SES_POLL_WAIT);
+}
+
+static void handle_write_request(const uint8_t *payload_ptr, uint16_t payload_len) {
+  uint64_t next_wake = 0;
+  bool got_wake = session_extract_next_wake(payload_ptr, payload_len, &next_wake);
+  if (got_wake) {
+    uint32_t now_hi, now_lo;
+    RTC_get_timestamp(&now_hi, &now_lo);
+    uint64_t now = ((uint64_t)now_hi << 32) | now_lo;
+    if (next_wake > now + COLD_START_OFFSET_SEC) {
+      uint64_t delta = next_wake - now - COLD_START_OFFSET_SEC;
+      if (delta < 86400ULL) pending_wake_seconds = (uint32_t)delta;
+    }
+  }
+  ses_payload_len = session_build_write_response(
+      payload_ptr, payload_len, got_wake, ses_payload_buf, sizeof(ses_payload_buf));
+  if (ses_payload_len == 0) {
+    session_handle_failure();
+    return;
+  }
+  session_send_and_wait(MSG_TYPE_WRITE_RESPONSE, ses_payload_buf,
+                         ses_payload_len, COM_SES_POLL_WAIT);
+}
+
+static void handle_ack(const uint8_t *p, uint16_t len) {
+  (void)p; (void)len;
+  PulseCounter_reset();
+  Storage_save_pulse_count(0);
+  session.failure_count = 0;
+  session.current_state = COM_SES_DONE;
+}
+
+static void session_dispatch_hes_msg(uint8_t msg_type, const uint8_t *payload_ptr,
+                                      uint16_t payload_len) {
+  static const struct {
+    uint8_t type;
+    msg_handler_t handler;
+  } dispatch_table[] = {
+    { MSG_TYPE_REGISTER_RESPONSE, handle_register_response },
+    { MSG_TYPE_HANDSHAKE,         handle_handshake         },
+    { MSG_TYPE_READ_REQUEST,      handle_read_request      },
+    { MSG_TYPE_WRITE_REQUEST,     handle_write_request     },
+    { MSG_TYPE_ACK,               handle_ack               },
+  };
+
+  for (size_t i = 0; i < sizeof(dispatch_table) / sizeof(dispatch_table[0]); i++) {
+    if (dispatch_table[i].type == msg_type) {
+      dispatch_table[i].handler(payload_ptr, payload_len);
+      return;
+    }
+  }
+  session_handle_failure();
 }
 
 /**
@@ -1094,7 +1169,12 @@ void Com_session_process(void) {
       int udp_result = Com_UDP_context_process();
       if (udp_result == COM_UDP_PROCESS_DONE) {
         delay_stop(session.state_timeout_timer);
+#ifdef DEBUG_SESSION_START
+        session_send_and_wait(MSG_TYPE_SESSION_START_REQUEST, NULL, 0,
+                               COM_SES_POLL_WAIT);
+#else
         session.current_state = COM_SES_FETCH_IPV6;
+#endif
       } else if (udp_result == COM_UDP_PROCESS_ERROR) {
         udp_process.current_state = COM_UDP_IDLE;
         session_handle_failure();
@@ -1139,7 +1219,13 @@ void Com_session_process(void) {
           }
         }
       }
-      session.current_state = COM_SES_SEND_ANNOUNCE;
+      if (strcmp(ses_ipv6, last_announced_ipv6) == 0) {
+        session.poll_start_tick_ms = HAL_GetTick();
+        delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
+        session.current_state = COM_SES_POLL_WAIT;
+      } else {
+        session.current_state = COM_SES_SEND_ANNOUNCE;
+      }
     } break;
 
     /* ---- Announce: REGISTER_REQUEST with stored device_id (HES updates IP) ---- */
@@ -1158,6 +1244,8 @@ void Com_session_process(void) {
         session_handle_failure();
         break;
       }
+      strncpy(last_announced_ipv6, ses_ipv6, sizeof(last_announced_ipv6) - 1);
+      last_announced_ipv6[sizeof(last_announced_ipv6) - 1] = '\0';
       session_send_and_wait(MSG_TYPE_REGISTER_REQUEST, ses_payload_buf,
                              ses_payload_len, COM_SES_POLL_WAIT);
     } break;
@@ -1207,7 +1295,8 @@ void Com_session_process(void) {
       if (ATCore_get_first_qird_value() > 0) {
         delay_stop(session.state_timeout_timer);
         session.current_state = COM_SES_READ_HES_MSG;
-      } else if ((HAL_GetTick() - session.poll_start_tick_ms) >= POLL_RESEND_TIMEOUT_MS) {
+      } else if (session.can_resend &&
+                 (HAL_GetTick() - session.poll_start_tick_ms) >= POLL_RESEND_TIMEOUT_MS) {
         session.poll_start_tick_ms = HAL_GetTick();
         session_send_and_wait(session.last_msg_type,
                               session.last_payload_len > 0 ? ses_payload_buf : NULL,
@@ -1259,75 +1348,7 @@ void Com_session_process(void) {
         break;
       }
 
-      switch (rx_env.msg_type) {
-        case MSG_TYPE_REGISTER_RESPONSE: {
-          /* HES confirmed the IP-update announce. Send our ACK back. */
-          session_send_and_wait(MSG_TYPE_ACK, NULL, 0, COM_SES_POLL_WAIT);
-        } break;
-
-        case MSG_TYPE_HANDSHAKE: {
-          session_send_and_wait(MSG_TYPE_HANDSHAKE_RESPONSE, NULL, 0,
-                                 COM_SES_POLL_WAIT);
-        } break;
-
-        case MSG_TYPE_READ_REQUEST: {
-          Storage_save_pulse_count(PulseCounter_get_count());
-          ses_payload_len = session_build_read_response(
-              payload_ptr, payload_len,
-              ses_payload_buf, sizeof(ses_payload_buf));
-          if (ses_payload_len == 0) {
-            session_handle_failure();
-            break;
-          }
-          session_send_and_wait(MSG_TYPE_READ_RESPONSE, ses_payload_buf,
-                                 ses_payload_len, COM_SES_POLL_WAIT);
-        } break;
-
-        case MSG_TYPE_WRITE_REQUEST: {
-          uint64_t next_wake = 0;
-          bool got_wake = session_extract_next_wake(payload_ptr, payload_len,
-                                                     &next_wake);
-          if (got_wake) {
-            uint32_t now_hi, now_lo;
-            RTC_get_timestamp(&now_hi, &now_lo);
-            uint64_t now = ((uint64_t)now_hi << 32) | now_lo;
-            if (next_wake > now + COLD_START_OFFSET_SEC) {
-              uint64_t delta = next_wake - now - COLD_START_OFFSET_SEC;
-              if (delta < 86400ULL) pending_wake_seconds = (uint32_t)delta;
-            }
-          }
-          ses_payload_len = session_build_write_response(
-              payload_ptr, payload_len, got_wake,
-              ses_payload_buf, sizeof(ses_payload_buf));
-          if (ses_payload_len == 0) {
-            session_handle_failure();
-            break;
-          }
-          session_send_and_wait(MSG_TYPE_WRITE_RESPONSE, ses_payload_buf,
-                                 ses_payload_len, COM_SES_POLL_WAIT);
-        } break;
-
-        case MSG_TYPE_ACK: {
-#ifdef DEBUG_SESSION_START
-          if (!ses_debug_start_sent) {
-            ses_debug_start_sent = true;
-            session_send_and_wait(MSG_TYPE_SESSION_START_REQUEST, NULL, 0,
-                                   COM_SES_POLL_WAIT);
-            break;
-          }
-#endif
-          /* HES closed the session. Reset pulse counter checkpoint and
-           * mark the session as complete. */
-          PulseCounter_reset();
-          Storage_save_pulse_count(0);
-          session.failure_count = 0;
-          session.current_state = COM_SES_DONE;
-        } break;
-
-        default:
-          session_handle_failure();
-          break;
-      }
+      session_dispatch_hes_msg(rx_env.msg_type, payload_ptr, payload_len);
     } break;
 
     case COM_SES_DONE:

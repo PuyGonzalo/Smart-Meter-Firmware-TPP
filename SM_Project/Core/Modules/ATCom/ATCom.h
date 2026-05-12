@@ -155,6 +155,7 @@ typedef struct {
   uint8_t last_msg_type;           /* msg_type of last sent envelope (for resend) */
   uint16_t last_payload_len;       /* payload len of last sent envelope (0 = NULL) */
   uint32_t poll_start_tick_ms;     /* HAL_GetTick() when polling started (resend guard) */
+  bool can_resend;                 /* true only after at least one envelope was sent */
 } session_fsm_t;
 
 /* Per-command timeouts (ms) — values from Quectel BG95 TCP/IP Application Note v1.4 */
