@@ -836,6 +836,7 @@ static bool session_send_envelope(uint8_t msg_type, const uint8_t *payload,
   env.msg_type = msg_type;
   ATCore_get_device_id(env.device_id);
   ATCore_get_device_mac(env.mac);
+  session.last_seq = session.seq;
   env.seq = session.seq++;
 
   uint32_t ts_hi, ts_lo;
@@ -1253,7 +1254,13 @@ void Com_session_process(void) {
     /* ---- Generic SEND_OK wait — transitions to session.after_send_ok ---- */
     case COM_SES_WAIT_SEND_OK: {
       if (!ATCore_is_response_ready()) break;
-      ATCore_check_response();
+      if (ATCore_check_response() != BG95_OK) {
+        /* Unrecognized response — likely a +QIURC: "recv" URC that arrived
+         * before SEND OK. Re-arm DMA and keep waiting; global TIMEOUT_SEND
+         * handles the case where SEND OK never arrives. */
+        ATCore_reset_rx();
+        break;
+      }
       if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
         delay_stop(session.state_timeout_timer);
         session.poll_start_tick_ms = HAL_GetTick();
@@ -1298,6 +1305,7 @@ void Com_session_process(void) {
       } else if (session.can_resend &&
                  (HAL_GetTick() - session.poll_start_tick_ms) >= POLL_RESEND_TIMEOUT_MS) {
         session.poll_start_tick_ms = HAL_GetTick();
+        session.seq = session.last_seq;
         session_send_and_wait(session.last_msg_type,
                               session.last_payload_len > 0 ? ses_payload_buf : NULL,
                               session.last_payload_len,
