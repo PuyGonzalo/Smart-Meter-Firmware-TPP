@@ -51,6 +51,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/appDrivers/AT/at_net.c
     Core/appDrivers/AT/at_parser.c
     Core/Modules/ATCom/ATCom.c
+    Core/Modules/ATCom/atcom_udp.c
+    Core/Modules/ATCom/atcom_registration.c
+    Core/Modules/ATCom/atcom_session.c
     Core/Modules/PulseCounter/pulse_counter.c
     Core/Modules/Storage/storage.c
     Core/Modules/Payload/rlp.c
