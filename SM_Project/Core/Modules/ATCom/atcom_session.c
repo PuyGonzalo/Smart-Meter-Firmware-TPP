@@ -306,6 +306,10 @@ bool Com_is_session_done(void) {
           session.current_state == COM_SES_ERROR);
 }
 
+bool Com_session_failed(void) {
+  return session.needs_hard_reset;
+}
+
 /**
  * @brief Helper: send an envelope and transition to WAIT_SEND_OK with the
  *        given after_send_ok target.
@@ -334,7 +338,20 @@ static void handle_register_response(const uint8_t *p, uint16_t len) {
 
 static void handle_handshake(const uint8_t *p, uint16_t len) {
   (void)p; (void)len;
-  session_send_and_wait(MSG_TYPE_HANDSHAKE_RESPONSE, NULL, 0, COM_SES_POLL_WAIT);
+  /* Payload: RLP list [ status(u8) ]. Phase 7 (HMAC) aun no validada,
+   * asi que siempre MSG_STATUS_OK. */
+  rlp_writer_t w;
+  rlp_writer_init(&w, ses_payload_buf, sizeof(ses_payload_buf));
+  uint16_t bm = rlp_list_begin(&w);
+  rlp_encode_uint8(&w, MSG_STATUS_OK);
+  rlp_list_end(&w, bm);
+  ses_payload_len = rlp_writer_ok(&w) ? rlp_writer_len(&w) : 0;
+  if (ses_payload_len == 0) {
+    session_handle_failure();
+    return;
+  }
+  session_send_and_wait(MSG_TYPE_HANDSHAKE_RESPONSE, ses_payload_buf,
+                         ses_payload_len, COM_SES_POLL_WAIT);
 }
 
 static void handle_read_request(const uint8_t *payload_ptr, uint16_t payload_len) {

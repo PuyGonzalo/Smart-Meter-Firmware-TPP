@@ -266,6 +266,12 @@ int main(void)
     }
     ATCore_power_off();
 
+    /* Sesion fallida tras agotar reintentos (10 fallas consecutivas):
+     * mismo criterio que registration — hard reset para empezar limpio. */
+    if (Com_session_failed()) {
+      NVIC_SystemReset();
+    }
+
     /* HES dictates next wake-up if it sent one in this session's response;
      * fall back to local default cadence otherwise. */
     uint32_t next_wake = Com_pop_pending_wake_seconds();

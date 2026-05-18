@@ -5,7 +5,6 @@
 
 #include "atcom_registration.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include "at_core.h"
@@ -146,7 +145,6 @@ void Com_register_device_process(void) {
     /* --------------------------------------------------------- */
     case COM_REG_INIT: {
       if (Storage_is_registered()) {
-        printf("Skipping registration — credentials loaded from EEPROM.\r\n");
         register_process.current_state = COM_REG_FINISHED;
         break;
       }

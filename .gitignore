@@ -59,6 +59,7 @@ SM_Project/.vscode
 SM_Project/build
 Doc/html
 Doc/latex
+Doc/Claude-Plans/
 SM_Project/.clangd
 SM_Project/.settings/bundles-lock.store.json
 SM_Project/.settings/bundles.store.json

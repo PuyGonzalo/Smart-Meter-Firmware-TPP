@@ -5,8 +5,6 @@
 
 #include "atcom_udp.h"
 
-#include <stdio.h>
-
 #include "at_core.h"
 #include "at_net.h"
 #include "atcom_internal.h"
@@ -152,7 +150,6 @@ int Com_UDP_context_process() {
         udp_process.pdp_context_ready = true;
         udp_process.retry_count = 0;  // Reset for next time
         udp_process.current_state = COM_UDP_PROCESS_DONE;
-        printf("UDP context established.\r\n");
       } else {
         // Failed - retry or error
         if (udp_process.retry_count < udp_process.max_retries) {
@@ -160,7 +157,6 @@ int Com_UDP_context_process() {
           udp_process.current_state = COM_UDP_QIOPEN_SEND;  // Retry QIOPEN
         } else {
           udp_process.current_state = COM_UDP_PROCESS_ERROR;
-          printf("UDP setup failed (QIOPEN).\r\n");
         }
       }
       break;

@@ -23,7 +23,7 @@
 #define RESTART_DELAY_BASE_MS    200
 #define RESTART_DELAY_MAX_MS     3000
 #define GENERIC_RETRY_DELAY_MS   500
-#define MAX_FAILURES_HARD_RESET  10   /* ~66s total before hard reset */
+#define MAX_FAILURES_HARD_RESET  20   /* ~3 min total before hard reset (asume ~5s state timeout + backoff cap 3s por ciclo) */
 #else
 #define RESTART_DELAY_BASE_MS    1000
 #define RESTART_DELAY_MAX_MS     5000  /* cap at 5s so 5 failures fit in <120s global timeout */
@@ -48,6 +48,13 @@
 #ifdef DEBUG_SESSION_START
 #define MSG_TYPE_SESSION_START_REQUEST  0xF0
 #endif
+
+/* Status flags reutilizados como respuesta en HANDSHAKE_RESPONSE,
+ * REGISTER_RESPONSE, etc. Spec: Body/07B-estructura-de-mensajes.tex */
+#define MSG_STATUS_OK                 0x00
+#define MSG_STATUS_ERR_INVALID_KEY    0x01
+#define MSG_STATUS_ERR_INVALID_MSG    0x02
+#define MSG_STATUS_ERR_INVALID_PROTO  0x03
 
 /* OBIS operation codes */
 #define OBIS_OP_READ    0x00

@@ -61,6 +61,17 @@ typedef struct {
 void atcom_session_init(void);
 void Com_session_start(void);
 void Com_session_process(void);
+
+/**
+ * @brief true cuando la sesion termino — exitosa O fallida.
+ *        Usar Com_session_failed() para distinguir cual fue.
+ */
 bool Com_is_session_done(void);
+
+/**
+ * @brief true si la sesion termino por hard-reset (10 fallas consecutivas).
+ *        Solo es valido leerla despues de Com_is_session_done() == true.
+ */
+bool Com_session_failed(void);
 
 #endif /* _ATCOM_SESSION_H_ */
