@@ -60,6 +60,22 @@ void RTC_get_timestamp(uint32_t *ts_high, uint32_t *ts_low);
  */
 bool RTC_set_datetime(uint32_t ts_high, uint32_t ts_low);
 
+/**
+ * @brief  Arm RTC Alarm A to fire after @p seconds from now.
+ *         Alarm ignores the date field — valid for periods up to 24h.
+ */
+void RTC_arm_alarm(uint32_t seconds);
+
+/**
+ * @brief  Check if RTC Alarm A has fired since last clear.
+ */
+bool RTC_alarm_fired(void);
+
+/**
+ * @brief  Clear the alarm-fired flag.
+ */
+void RTC_clear_alarm_flag(void);
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

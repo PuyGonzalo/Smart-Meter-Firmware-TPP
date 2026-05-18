@@ -55,19 +55,17 @@ dkms.conf
 *.dwo
 
 #STM32
-SM_Project/.vscode
+SM_Project/.vscode/*
+!SM_Project/.vscode/launch.json
 SM_Project/build
 Doc/html
 Doc/latex
+Doc/Claude-Plans/
 SM_Project/.clangd
 SM_Project/.settings/bundles-lock.store.json
 SM_Project/.settings/bundles.store.json
 SM_Project/.settings/ide.store.json
-<<<<<<< HEAD
 
 # Claude Code
 .claude/
 CLAUDE.md
-=======
-SM_Project/.vscode/launch.json
->>>>>>> ce201c010ea28edb1c59f3ab6a971ca16dc46a3c

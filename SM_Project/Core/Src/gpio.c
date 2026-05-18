@@ -52,6 +52,9 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(ENA_LVL_SHIFTER_GPIO_Port, ENA_LVL_SHIFTER_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(QUECTEL_PWRKEY_GPIO_Port, QUECTEL_PWRKEY_Pin, GPIO_PIN_SET);
+
   /*Configure GPIO pin : ENA_LVL_SHIFTER_Pin */
   GPIO_InitStruct.Pin = ENA_LVL_SHIFTER_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -64,6 +67,19 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(PULSE_INPUT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : QUECTEL_STATUS_Pin */
+  GPIO_InitStruct.Pin = QUECTEL_STATUS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(QUECTEL_STATUS_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : QUECTEL_PWRKEY_Pin */
+  GPIO_InitStruct.Pin = QUECTEL_PWRKEY_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(QUECTEL_PWRKEY_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);

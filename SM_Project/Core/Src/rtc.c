@@ -23,6 +23,8 @@
 /* USER CODE BEGIN 0 */
 #include <stdbool.h>
 
+static volatile bool alarm_fired = false;
+
 /* Days in each month (non-leap year). Index 0 unused. */
 static const uint8_t days_in_month[] = {
     0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -106,6 +108,7 @@ void MX_RTC_Init(void)
 
   RTC_TimeTypeDef sTime = {0};
   RTC_DateTypeDef sDate = {0};
+  RTC_AlarmTypeDef sAlarm = {0};
 
   /* USER CODE BEGIN RTC_Init 1 */
 
@@ -149,6 +152,24 @@ void MX_RTC_Init(void)
   sDate.Year = 0x0;
 
   if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Enable the Alarm A
+  */
+  sAlarm.AlarmTime.Hours = 0x0;
+  sAlarm.AlarmTime.Minutes = 0x0;
+  sAlarm.AlarmTime.Seconds = 0x0;
+  sAlarm.AlarmTime.SubSeconds = 0x0;
+  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
+  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+  sAlarm.AlarmDateWeekDay = 0x1;
+  sAlarm.Alarm = RTC_ALARM_A;
+  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
   {
     Error_Handler();
   }
@@ -216,6 +237,40 @@ void RTC_get_timestamp(uint32_t *ts_high, uint32_t *ts_low) {
 
   *ts_high = (uint32_t)(epoch >> 32);
   *ts_low = (uint32_t)(epoch & 0xFFFFFFFF);
+}
+
+void RTC_arm_alarm(uint32_t seconds) {
+  RTC_TimeTypeDef sTime;
+  RTC_DateTypeDef sDate;
+
+  HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+  HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN); /* unlock shadow regs */
+
+  uint32_t now_sec = sTime.Hours * 3600 + sTime.Minutes * 60 + sTime.Seconds;
+  uint32_t alarm_sec = (now_sec + seconds) % 86400;
+
+  RTC_AlarmTypeDef sAlarm = {0};
+  sAlarm.AlarmTime.Hours = alarm_sec / 3600;
+  sAlarm.AlarmTime.Minutes = (alarm_sec % 3600) / 60;
+  sAlarm.AlarmTime.Seconds = alarm_sec % 60;
+  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;
+  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+  sAlarm.AlarmDateWeekDay = 1;
+  sAlarm.Alarm = RTC_ALARM_A;
+
+  alarm_fired = false;
+  HAL_RTC_DeactivateAlarm(&hrtc, RTC_ALARM_A);
+  HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN);
+}
+
+bool RTC_alarm_fired(void) { return alarm_fired; }
+
+void RTC_clear_alarm_flag(void) { alarm_fired = false; }
+
+void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc_cb) {
+  (void)hrtc_cb;
+  alarm_fired = true;
 }
 
 bool RTC_set_datetime(uint32_t ts_high, uint32_t ts_low) {

@@ -62,6 +62,10 @@ void Error_Handler(void);
 #define PULSE_INPUT_Pin GPIO_PIN_8
 #define PULSE_INPUT_GPIO_Port GPIOA
 #define PULSE_INPUT_EXTI_IRQn EXTI4_15_IRQn
+#define QUECTEL_STATUS_Pin GPIO_PIN_4
+#define QUECTEL_STATUS_GPIO_Port GPIOB
+#define QUECTEL_PWRKEY_Pin GPIO_PIN_5
+#define QUECTEL_PWRKEY_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

@@ -22,8 +22,12 @@
 
 #define BG95_RX_BUFFER_SIZE 512
 #define BG95_TX_BUFFER_SIZE 300
-#define ENA_LVL_SHIFTER_Pin GPIO_PIN_0
-#define ENA_LVL_SHIFTER_GPIO_Port GPIOB
+
+#define BG95_PWRKEY_ON_MS        600   /* PWRKEY low pulse to turn ON (>=500ms) */
+#define BG95_PWRKEY_OFF_MS       1000  /* PWRKEY low pulse to turn OFF (>=650ms) */
+#define BG95_BOOT_TIMEOUT_MS     20000 /* Max wait for modem ready after power on (cold boot ~13-16s per Quectel HW design) */
+#define BG95_AT_POLL_INTERVAL_MS 500   /* Interval between AT polling attempts */
+#define BG95_POWEROFF_TIMEOUT_MS 30000 /* Max wait for STATUS LOW after PWRKEY off pulse */
 
 /**
  * @brief 
@@ -80,6 +84,8 @@ typedef struct {
   bool data_send_rdy; /** */
 
   BG95_Pin_t lvl_shifter_pin; /** */
+  BG95_Pin_t pwrkey_pin;      /** */
+  BG95_Pin_t status_pin;      /** */
 
 } BG95_t;
 
@@ -102,6 +108,8 @@ typedef struct {
 
 
 void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart);
+bg95_status_t BG95_power_on(BG95_t *bg95);
+bg95_status_t BG95_power_off(BG95_t *bg95);
 bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd, uint16_t cmd_size);
 bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data, uint16_t data_size);
 bool BG95_process_rx(BG95_t *bg95);

@@ -46,39 +46,39 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT_CGMI, "+GMI", 4, fCmdBuild_NoParams},
     {CMD_AT_CGMM, "+CGMM", 5, fCmdBuild_NoParams},
     {CMD_AT_CGMR, "+CGMR", 5, fCmdBuild_NoParams},
-    {CMD_AT_CGSN, "+CGSN", 5, NULL},
+    {CMD_AT_CGSN, "+CGSN", 5, fCmdBuild_NoParams},
     {CMD_AT_CIMI, "+CIMI", 5, fCmdBuild_NoParams},
     {CMD_AT_CEER, "+CEER", 5, fCmdBuild_NoParams},
-    {CMD_AT_CMEE, "+CMEE", 5, NULL},
-    {CMD_AT_CPIN, "+CPIN", 5, NULL},
-    {CMD_AT_CFUN, "+CFUN", 5, NULL},
-    {CMD_AT_COPS, "+COPS", 5, NULL},
+    {CMD_AT_CMEE, "+CMEE", 5, fCmdBuild_NoParams},
+    {CMD_AT_CPIN, "+CPIN", 5, fCmdBuild_NoParams},
+    {CMD_AT_CFUN, "+CFUN", 5, fCmdBuild_NoParams},
+    {CMD_AT_COPS, "+COPS", 5, fCmdBuild_NoParams},
     {CMD_AT_CNUM, "+CNUM", 5, fCmdBuild_NoParams},
-    {CMD_AT_CGATT, "+CGATT", 6, NULL},
-    {CMD_AT_CREG, "+CREG", 5, NULL},
-    {CMD_AT_CGREG, "+CGREG", 6, NULL},
-    {CMD_AT_CEREG, "+CEREG", 6, NULL},
-    {CMD_AT_CGEREP, "+CGEREP", 7, NULL},
+    {CMD_AT_CGATT, "+CGATT", 6, fCmdBuild_NoParams},
+    {CMD_AT_CREG, "+CREG", 5, fCmdBuild_NoParams},
+    {CMD_AT_CGREG, "+CGREG", 6, fCmdBuild_NoParams},
+    {CMD_AT_CEREG, "+CEREG", 6, fCmdBuild_NoParams},
+    {CMD_AT_CGEREP, "+CGEREP", 7, fCmdBuild_NoParams},
     {CMD_AT_CGEV, "+CGEV", 5, fCmdBuild_NoParams},
     {CMD_AT_CSQ, "+CSQ", 4, fCmdBuild_NoParams},
-    {CMD_AT_CGDCONT, "+CGDCONT", 8, NULL},
-    {CMD_AT_CGACT, "+CGACT", 6, NULL},
-    {CMD_AT_CGDATA, "+CGDATA", 7, NULL},
-    {CMD_AT_CGPADDR, "+CGPADDR", 8, NULL},
-    {CMD_ATD, "D", 1, NULL},
+    {CMD_AT_CGDCONT, "+CGDCONT", 8, fCmdBuild_NoParams},
+    {CMD_AT_CGACT, "+CGACT", 6, fCmdBuild_NoParams},
+    {CMD_AT_CGDATA, "+CGDATA", 7, fCmdBuild_NoParams},
+    {CMD_AT_CGPADDR, "+CGPADDR", 8, fCmdBuild_NoParams},
+    {CMD_ATD, "D", 1, fCmdBuild_NoParams},
     {CMD_ATE0, "E0", 2, fCmdBuild_NoParams},
     {CMD_ATE0, "E1", 2, fCmdBuild_NoParams},
     {CMD_ATH, "H", 1, fCmdBuild_NoParams},
     {CMD_ATO, "O", 1, fCmdBuild_NoParams},
-    {CMD_ATV, "V", 1, NULL},
+    {CMD_ATV, "V", 1, fCmdBuild_NoParams},
     {CMD_AT_AND_W, "&W", 2, fCmdBuild_NoParams},
-    {CMD_AT_AND_D, "&D", 2, NULL},
-    {CMD_ATX, "X", 1, NULL},
-    {CMD_AT_IPR, "+IPR", 4, NULL},
-    {CMD_AT_IFC, "+IFC", 4, NULL},
+    {CMD_AT_AND_D, "&D", 2, fCmdBuild_NoParams},
+    {CMD_ATX, "X", 1, fCmdBuild_NoParams},
+    {CMD_AT_IPR, "+IPR", 4, fCmdBuild_NoParams},
+    {CMD_AT_IFC, "+IFC", 4, fCmdBuild_NoParams},
 
     /* TCP (IP) */
-    {CMD_AT_QICSGP, "+QICSGP", 7, NULL},
+    {CMD_AT_QICSGP, "+QICSGP", 7, fCmdBuild_NoParams},
     {CMD_AT_QIACT, "+QIACT", 6, fCmdBuild_ATQIACT},
     {CMD_AT_QIDEACT, "+QIDEACT", 8, fCmdBuild_ATQIDEACT},
     {CMD_AT_QIOPEN, "+QIOPEN", 7, fCmdBuild_ATQIOPEN},
@@ -89,7 +89,7 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
     {CMD_AT_QISENDEX, "+QISENDEX", 10, fCmdBuild_ATQISENDEX},
 
     /* Other */
-    {CMD_AT_QICFG, "+QICFG", 6, NULL},
+    {CMD_AT_QICFG, "+QICFG", 6, fCmdBuild_NoParams},
 
 };
 
@@ -135,6 +135,24 @@ void ATCore_init(UART_HandleTypeDef *huart) {
  *
  */
 void ATCore_config() {}
+
+/**
+ * @brief Power on the modem (enables level shifter and pulses PWRKEY).
+ *
+ * @return true if modem is ready, false on timeout.
+ */
+bool ATCore_power_on(void) {
+  return BG95_power_on(AT_DEVICE) == BG95_OK;
+}
+
+/**
+ * @brief Power off the modem (AT+QPOWD and disables level shifter).
+ *
+ * @return true on graceful power-down, false on timeout.
+ */
+bool ATCore_power_off(void) {
+  return BG95_power_off(AT_DEVICE) == BG95_OK;
+}
 
 /**c
  * @brief
@@ -239,7 +257,7 @@ bool ATCore_send_cmd(atcmd_desc_t *cmd) {
   uint32_t cmd_size_aux = 0;
 
   cmd->at_cmd_size = ATCMD_BG95_LUT[cmd->id].cmd_size;
-  ATCMD_BG95_LUT[cmd->id].build(cmd);
+  if (ATCMD_BG95_LUT[cmd->id].build) ATCMD_BG95_LUT[cmd->id].build(cmd);
   cmd_size_aux = cmd->at_cmd_size;
 
   if (cmd->cmd_mode == AT_CMD_EXEC) {
@@ -377,5 +395,48 @@ int16_t ATCore_get_first_qird_value() {
 void ATCore_set_data_mode() { AT_DEVICE->data_mode = true; }
 
 void ATCore_reset_rx() { AT_DRV->reset_rx(AT_DEVICE); }
+
+/**
+ * @brief Fetch IMEI from modem via AT+CGSN (blocking, up to 3 s).
+ * @param out   Output buffer for NUL-terminated 15-digit IMEI string.
+ * @param cap   Buffer capacity (must be >= 16).
+ * @retval true  IMEI extracted successfully.
+ * @retval false Timeout, command error, or parse failure.
+ */
+bool ATCore_get_imei(char *out, uint16_t cap) {
+  if (!out || cap < 16) return false;
+
+  atcmd_desc_t cmd = ATCMD_DESC_DEFAULT;
+  cmd.id = CMD_AT_CGSN;
+  cmd.cmd_mode = AT_CMD_EXEC;
+  if (!ATCore_send_cmd(&cmd)) return false;
+
+  uint32_t t0 = HAL_GetTick();
+  while (!ATCore_is_response_ready()) {
+    if ((HAL_GetTick() - t0) > 3000) return false;
+  }
+  ATCore_process_response();
+
+  char resp[BG95_RX_BUFFER_SIZE];
+  uint16_t resp_size;
+  if (!ATCore_get_last_response(resp, sizeof(resp), &resp_size)) return false;
+
+  /* Find 15 consecutive ASCII digits — the IMEI */
+  for (uint16_t i = 0; i + 14 < resp_size; i++) {
+    bool all_digits = true;
+    for (uint8_t j = 0; j < 15; j++) {
+      if (resp[i + j] < '0' || resp[i + j] > '9') {
+        all_digits = false;
+        break;
+      }
+    }
+    if (all_digits) {
+      memcpy(out, resp + i, 15);
+      out[15] = '\0';
+      return true;
+    }
+  }
+  return false;
+}
 
 /* ---------------------- Private functions definition ---------------------- */

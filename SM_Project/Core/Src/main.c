@@ -31,6 +31,7 @@
 #include "ATCom.h"
 #include "delay.h"
 #include "printf_retarget.h"
+#include "pulse_counter.h"
 #include "storage.h"
 
 /* USER CODE END Includes */
@@ -42,9 +43,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define REGISTRATION_TIMEOUT_MS  720000  /* Max time for device registration (12 min: covers QIACT 150s + QIOPEN 150s with retries) */
+#define SESSION_PERIOD_SEC       60      /* Interval between HES sessions */
 
 /* Uncomment to wipe EEPROM on boot (forces re-registration) */
-// #define DEBUG_ERASE_EEPROM
+#define DEBUG_ERASE_EEPROM
+
+/* Tests — descomentar UNO a la vez (o ninguno para flujo normal) */
+// #define TEST_PWRKEY_STATUS
+//#define TEST_RTC_WAKEUP
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -68,7 +75,89 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#if defined(TEST_PWRKEY_STATUS) || defined(TEST_RTC_WAKEUP)
+static inline bool read_status(void) {
+  return HAL_GPIO_ReadPin(QUECTEL_STATUS_GPIO_Port,
+                          QUECTEL_STATUS_Pin) == GPIO_PIN_SET;
+}
+#endif
 
+#ifdef TEST_PWRKEY_STATUS
+static void run_pwrkey_status_test(void) {
+  printf("\r\n=== PWRKEY + STATUS TEST ===\r\n");
+
+  bool s0 = read_status();
+  printf("[1] STATUS inicial: %d  (esperado: 0)\r\n", s0);
+
+  printf("[2] Power ON...\r\n");
+  uint32_t t0 = HAL_GetTick();
+  bool on_ok = ATCore_power_on();
+  uint32_t on_ms = HAL_GetTick() - t0;
+  printf("    ATCore_power_on = %d  (%lu ms)\r\n", on_ok, on_ms);
+
+  bool s1 = read_status();
+  printf("[3] STATUS post power_on: %d  (esperado: 1)\r\n", s1);
+
+  HAL_Delay(3000);
+
+  printf("[4] Power OFF (PWRKEY pulse + polling STATUS)...\r\n");
+  t0 = HAL_GetTick();
+  bool off_ok = ATCore_power_off();
+  uint32_t off_ms = HAL_GetTick() - t0;
+  printf("    ATCore_power_off = %d  (%lu ms)\r\n", off_ok, off_ms);
+  /* off_ok == 1 ya implica que STATUS fue a LOW dentro del timeout */
+
+  bool pass = !s0 && on_ok && s1 && off_ok;
+  printf("=== RESULT: %s ===\r\n\r\n", pass ? "PASS" : "FAIL");
+
+  while (1) { HAL_Delay(1000); }
+}
+#endif
+
+#ifdef TEST_RTC_WAKEUP
+#define TEST_RTC_PERIOD_SEC  30   /* mas corto que SESSION_PERIOD_SEC para iterar rapido */
+#define TEST_RTC_CYCLES      5    /* cantidad de ciclos antes de trap */
+
+static void run_rtc_wakeup_test(void) {
+  printf("\r\n=== RTC WAKEUP TEST ===\r\n");
+  printf("Ciclo: power_on -> (simula sesion 2s) -> power_off -> alarm(%ds)\r\n",
+         TEST_RTC_PERIOD_SEC);
+  printf("Se ejecutan %d ciclos. HSI mide el elapsed; compara con LSE.\r\n\r\n",
+         TEST_RTC_CYCLES);
+
+  for (uint32_t cycle = 1; cycle <= TEST_RTC_CYCLES; cycle++) {
+    printf("--- Ciclo %lu/%d ---\r\n", cycle, TEST_RTC_CYCLES);
+
+    uint32_t t0 = HAL_GetTick();
+    bool on_ok = ATCore_power_on();
+    printf("  [t=%lums] power_on=%d  STATUS=%d  (took %lums)\r\n",
+           HAL_GetTick(), on_ok, read_status(), HAL_GetTick() - t0);
+
+    /* Aca iria Com_session_*() en produccion — saltado en este test */
+    HAL_Delay(2000);
+
+    t0 = HAL_GetTick();
+    bool off_ok = ATCore_power_off();
+    printf("  [t=%lums] power_off=%d  (took %lums)\r\n",
+           HAL_GetTick(), off_ok, HAL_GetTick() - t0);
+
+    printf("  [t=%lums] Armando alarma RTC por %ds...\r\n",
+           HAL_GetTick(), TEST_RTC_PERIOD_SEC);
+    uint32_t t_arm = HAL_GetTick();
+    RTC_arm_alarm(TEST_RTC_PERIOD_SEC);
+    while (!RTC_alarm_fired()) { /* busy-wait */ }
+    uint32_t elapsed = HAL_GetTick() - t_arm;
+    RTC_clear_alarm_flag();
+
+    int32_t drift_ms = (int32_t)elapsed - (TEST_RTC_PERIOD_SEC * 1000);
+    printf("  [t=%lums] ALARM FIRED! elapsed=%lums drift=%+ldms\r\n\r\n",
+           HAL_GetTick(), elapsed, drift_ms);
+  }
+
+  printf("=== %d ciclos completados ===\r\n", TEST_RTC_CYCLES);
+  while (1) { HAL_Delay(1000); }
+}
+#endif
 /* USER CODE END 0 */
 
 /**
@@ -122,13 +211,46 @@ int main(void)
     Storage_load_credentials(dev_id, mac);
     ATCore_set_device_id(dev_id);
     ATCore_set_device_mac(mac);
-    printf("Device already registered. Credentials loaded from EEPROM.\r\n");
+    PulseCounter_set_count(Storage_load_pulse_count());
   }
 
   /*Creo delay para comandos at*/
   at_command_delay = delay_timer_create();
 
-  HAL_Delay(5000);
+#ifdef TEST_PWRKEY_STATUS
+  run_pwrkey_status_test();  /* nunca retorna */
+#endif
+#ifdef TEST_RTC_WAKEUP
+  run_rtc_wakeup_test();     /* nunca retorna */
+#endif
+
+  /* Power on modem and run registration if needed */
+  ATCore_power_on();
+
+  /* Fetch and persist IMEI on first boot (modem must be on) */
+  if (!Storage_has_imei()) {
+    char imei[STORAGE_IMEI_LEN];
+    if (ATCore_get_imei(imei, sizeof(imei))) {
+      Storage_save_imei(imei);
+    }
+  }
+
+  if (!Storage_is_registered()) {
+    if (!Com_register_device_blocking(REGISTRATION_TIMEOUT_MS)) {
+      NVIC_SystemReset();
+    }
+  }
+
+  /* If HES provided a wake-up time during registration, honor it before the
+   * first session: power off and sleep until the absolute moment HES asked. */
+  uint32_t initial_wake = Com_pop_pending_wake_seconds();
+  if (initial_wake > 0) {
+    ATCore_power_off();
+    RTC_arm_alarm(initial_wake);
+    while (!RTC_alarm_fired()) { }
+    RTC_clear_alarm_flag();
+    ATCore_power_on();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -138,7 +260,29 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    Com_register_device_process();
+    Com_session_start();
+    while (!Com_is_session_done()) {
+      Com_session_process();
+    }
+    ATCore_power_off();
+
+    /* Sesion fallida tras agotar reintentos (10 fallas consecutivas):
+     * mismo criterio que registration — hard reset para empezar limpio. */
+    if (Com_session_failed()) {
+      NVIC_SystemReset();
+    }
+
+    /* HES dictates next wake-up if it sent one in this session's response;
+     * fall back to local default cadence otherwise. */
+    uint32_t next_wake = Com_pop_pending_wake_seconds();
+    if (next_wake == 0) next_wake = SESSION_PERIOD_SEC;
+
+    /* TODO(Phase 5.1): enter Stop mode here instead of busy-wait */
+    RTC_arm_alarm(next_wake);
+    while (!RTC_alarm_fired()) { }
+    RTC_clear_alarm_flag();
+
+    ATCore_power_on();
   }
   /* USER CODE END 3 */
 }

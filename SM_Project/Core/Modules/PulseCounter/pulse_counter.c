@@ -21,6 +21,10 @@ void PulseCounter_reset(void) {
   pulse_count = 0;
 }
 
+void PulseCounter_set_count(uint32_t count) {
+  pulse_count = count;
+}
+
 void PulseCounter_irq_handler(void) {
   pulse_count++;
 }

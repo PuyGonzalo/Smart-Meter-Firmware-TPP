@@ -13,9 +13,12 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include "main.h"
 #include "stm32l0xx_hal_def.h"
+#include "stm32l0xx_hal_dma.h"
 #include "stm32l0xx_hal_uart.h"
 #include "stm32l0xx_hal_uart_ex.h"
 
@@ -103,7 +106,104 @@ void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart) {
 
   bg95->lvl_shifter_pin.GPIOx = ENA_LVL_SHIFTER_GPIO_Port;
   bg95->lvl_shifter_pin.GPIO_Pin = ENA_LVL_SHIFTER_Pin;
-  /// TODO: Agregar en un futuro pines para on/off del módulo.
+
+  bg95->pwrkey_pin.GPIOx = QUECTEL_PWRKEY_GPIO_Port;
+  bg95->pwrkey_pin.GPIO_Pin = QUECTEL_PWRKEY_Pin;
+
+  bg95->status_pin.GPIOx = QUECTEL_STATUS_GPIO_Port;
+  bg95->status_pin.GPIO_Pin = QUECTEL_STATUS_Pin;
+}
+
+/**
+ * @brief Power on the BG95 modem.
+ *
+ * Sequence: enable level shifter → PWRKEY pulse LOW for 600ms →
+ * poll with "AT" until modem responds "OK" or timeout.
+ *
+ * @param bg95 Pointer to BG95 instance
+ * @return BG95_OK if modem is ready, BG95_CMD_RESP_ERROR on timeout
+ */
+bg95_status_t BG95_power_on(BG95_t *bg95) {
+  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
+
+  /* Enable level shifter */
+  _enable_lvl_shifter(bg95);
+  HAL_Delay(10);
+
+  /* PWRKEY pulse: HIGH (idle) → LOW for BG95_PWRKEY_ON_MS → HIGH */
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
+  HAL_Delay(50);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_RESET);
+  HAL_Delay(BG95_PWRKEY_ON_MS);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
+
+  /* Poll with "AT\r\n" until modem responds OK */
+  uint32_t start = HAL_GetTick();
+  const char at_cmd[] = "AT\r\n";
+
+  while ((HAL_GetTick() - start) < BG95_BOOT_TIMEOUT_MS) {
+    HAL_Delay(BG95_AT_POLL_INTERVAL_MS);
+
+    BG95_reset_rx(bg95);
+
+    if (BG95_send_command(bg95, at_cmd, strlen(at_cmd)) != BG95_OK) continue;
+
+    /* Wait for response with short timeout */
+    uint32_t resp_start = HAL_GetTick();
+    while (!bg95->responseReady && (HAL_GetTick() - resp_start) < 1000);
+
+    if (bg95->responseReady) {
+      if (strstr(bg95->rxBuffer, "OK") != NULL) {
+        BG95_reset_rx(bg95);
+        return BG95_OK;
+      }
+    }
+  }
+
+  return BG95_CMD_RESP_ERROR;
+}
+
+/**
+ * @brief Power off the BG95 modem via PWRKEY pulse.
+ *
+ * Sequence: PWRKEY pulse LOW for BG95_PWRKEY_OFF_MS → poll STATUS pin
+ * until LOW (module fully off) → disable level shifter.
+ *
+ * @param bg95 Pointer to BG95 instance
+ * @return BG95_OK if STATUS went LOW within timeout, BG95_CMD_RESP_ERROR otherwise
+ */
+bg95_status_t BG95_power_off(BG95_t *bg95) {
+  if (bg95 == NULL) return BG95_ERROR_NULL_POINTER;
+
+  BG95_reset_rx(bg95);
+
+  /* PWRKEY pulse: HIGH (idle) → LOW for BG95_PWRKEY_OFF_MS → HIGH */
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
+  HAL_Delay(50);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_RESET);
+  HAL_Delay(BG95_PWRKEY_OFF_MS);
+  HAL_GPIO_WritePin(bg95->pwrkey_pin.GPIOx, bg95->pwrkey_pin.GPIO_Pin,
+                    GPIO_PIN_SET);
+
+  /* Poll STATUS until LOW = module fully off */
+  uint32_t start = HAL_GetTick();
+  while ((HAL_GetTick() - start) < BG95_POWEROFF_TIMEOUT_MS) {
+    if (HAL_GPIO_ReadPin(bg95->status_pin.GPIOx,
+                         bg95->status_pin.GPIO_Pin) == GPIO_PIN_RESET) {
+      _disable_lvl_shifter(bg95);
+      return BG95_OK;
+    }
+    HAL_Delay(100);
+  }
+
+  /* Timeout — disable level shifter anyway */
+  _disable_lvl_shifter(bg95);
+  return BG95_CMD_RESP_ERROR;
 }
 
 /**
@@ -124,14 +224,26 @@ bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd,
   bg95->txBuffer[cmd_size] = '\0';
   bg95->responseReady = false;
 
-  __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
-
-  /** TODO: Esto moverlo a la funcion de power-on el día de mañana */
-  _enable_lvl_shifter(bg95);
+  /* Drain ALL pending RX bytes and clear every error flag before arming DMA.
+   * A single FLUSH_DRREGISTER only clears one byte; modem URCs arriving while
+   * DMA was idle can leave more bytes in the shift register.  If even one ORE
+   * is pending when UART_Start_Receive_DMA enables EIE, the error ISR fires,
+   * resets ReceptionType to STANDARD, and UART_Start_Receive_DMA re-arms
+   * DMAR anyway — so ReceiveToIdle_DMA returns HAL_ERROR with DMAR still set.
+   * HAL_UART_DMAStop then silently skips (DMAR=1 but RxState=READY) leaving
+   * DMAR armed permanently. */
+  __HAL_UART_CLEAR_FLAG(bg95->huart,
+                        UART_CLEAR_OREF | UART_CLEAR_NEF |
+                        UART_CLEAR_FEF  | UART_CLEAR_PEF |
+                        UART_CLEAR_IDLEF);
+  while (__HAL_UART_GET_FLAG(bg95->huart, UART_FLAG_RXNE)) {
+    (void)bg95->huart->Instance->RDR;
+  }
+  __HAL_UART_CLEAR_FLAG(bg95->huart, UART_CLEAR_OREF);
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
                                     BG95_RX_BUFFER_SIZE)) != HAL_OK) {
-    HAL_UART_DMAStop(bg95->huart);
+    HAL_UART_Abort(bg95->huart);
     return BG95_SEND_CMD_ERROR;
   }
 
@@ -160,14 +272,18 @@ bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data,
   bg95->responseReady = false;
   bg95->data_send_rdy = false;
 
-  __HAL_UART_FLUSH_DRREGISTER(bg95->huart);
-
-  /** TODO: Esto moverlo a la funcion de power-on el día de mañana */
-  _enable_lvl_shifter(bg95);
+  __HAL_UART_CLEAR_FLAG(bg95->huart,
+                        UART_CLEAR_OREF | UART_CLEAR_NEF |
+                        UART_CLEAR_FEF  | UART_CLEAR_PEF |
+                        UART_CLEAR_IDLEF);
+  while (__HAL_UART_GET_FLAG(bg95->huart, UART_FLAG_RXNE)) {
+    (void)bg95->huart->Instance->RDR;
+  }
+  __HAL_UART_CLEAR_FLAG(bg95->huart, UART_CLEAR_OREF);
 
   if ((HAL_UARTEx_ReceiveToIdle_DMA(bg95->huart, (uint8_t *)bg95->rxBuffer,
                                     BG95_RX_BUFFER_SIZE)) != HAL_OK) {
-    HAL_UART_DMAStop(bg95->huart);
+    HAL_UART_Abort(bg95->huart);
     return BG95_SEND_CMD_ERROR;
   }
 
@@ -194,30 +310,21 @@ bool BG95_process_rx(BG95_t *bg95) {
 
     _BG95_set_last_response(bg95, bg95->rx_size);
 
-    _disable_lvl_shifter(bg95);
     bg95->responseReady = false;
     bg95->rx_size = 0;
     return true;
 
   } else {
     if (_BG95_process_data(bg95) == BG95_OK) {
-      _disable_lvl_shifter(bg95);
       bg95->responseReady = false;
       bg95->rx_size = 0;
       return true;
     } else {
-      _disable_lvl_shifter(bg95);
       bg95->responseReady = false;
       bg95->rx_size = 0;
       return false;
     }
   }
-
-  _disable_lvl_shifter(bg95);
-  bg95->responseReady = false;
-  bg95->rx_size = 0;
-
-  return false;
 }
 
 /**
@@ -240,14 +347,11 @@ bg95_status_t BG95_quick_check_response(BG95_t *bg95) {
   } else {
     bg95->responseReady = false;
     bg95->rx_size = 0;
-    _disable_lvl_shifter(bg95);
     return BG95_CMD_RESP_ERROR;
   }
 
   bg95->responseReady = false;
   bg95->rx_size = 0;
-
-  _disable_lvl_shifter(bg95);
 
   return BG95_OK;
 }
@@ -291,7 +395,16 @@ char *BG95_get_last_response(BG95_t *bg95) {
 void BG95_reset_rx(BG95_t *bg95) {
   if (bg95 == NULL) return;
 
-  HAL_UART_DMAStop(bg95->huart);
+  /* HAL_UART_Abort unconditionally stops any in-progress DMA, clears all
+   * error flags, flushes RDR, and forces RxState/ReceptionType to
+   * READY/STANDARD — regardless of what DMAR or RxState currently say.
+   * HAL_UART_DMAStop is conditional (requires DMAR=1 AND RxState=BUSY_RX),
+   * so it silently fails when the error ISR already cleared RxState to READY
+   * but UART_Start_Receive_DMA had already re-armed DMAR afterwards. */
+  HAL_UART_Abort(bg95->huart);
+
+  /* HAL_UART_Abort does not clear the IDLE flag */
+  __HAL_UART_CLEAR_FLAG(bg95->huart, UART_CLEAR_IDLEF);
 
   bg95->responseReady = false;
   bg95->responseStatus = BG95_RESP_NOT_RECEIVED;

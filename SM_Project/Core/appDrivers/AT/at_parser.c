@@ -20,15 +20,6 @@ static uint8_t raw_envelope[MAX_ENV_SIZE];
 
 /* ---------------------- Private functions declaration --------------------- */
 
-static void _get_str_slice(const char *str, size_t size, size_t offset,
-                           size_t num_bytes, char *out_str, size_t out_size);
-
-static void _num_to_hex(char *dest, size_t size, uint32_t num,
-                        uint8_t num_bytes);
-
-static int8_t _hexstr_to_bytes(const char *hexstr, uint16_t hex_len,
-                               uint8_t *out, uint16_t out_len);
-
 static void _bytes_to_hexstr(const uint8_t *src, uint16_t len, char *dst);
 
 static char *next_token(const char **str);
@@ -95,17 +86,45 @@ const uint8_t *Parser_fBuild_Envelope(const envelope_t *envp_info,
 }
 
 /**
- * @brief
+ * @brief Build a complete message: header(30) + payload(N) + MAC(16).
  *
- * @param envp
- * @param payload
- * @param payload_size
- * @return true
- * @return false
+ * Internally calls Parser_fBuild_Envelope() to build the header and MAC,
+ * then shifts the MAC right to insert the payload between them.
+ *
+ * @param envp          Envelope struct with header fields and MAC.
+ * @param payload       Payload bytes (e.g., RLP-encoded OBIS data). May be NULL if payload_size is 0.
+ * @param payload_size  Payload length in bytes.
+ * @param total_size    Output: total message size (30 + payload_size + 16).
+ * @retval Pointer to static internal buffer with the assembled message.
+ * @retval NULL on error (invalid params or message exceeds MAX_ENV_SIZE).
  */
-bool fBuild_Envelope_w_payload(envelope_t *envp, char *payload,
-                               uint16_t payload_size) {
-  return true;
+const uint8_t *Parser_fBuild_Envelope_w_payload(const envelope_t *envp,
+                                                 const uint8_t *payload,
+                                                 uint16_t payload_size,
+                                                 uint16_t *total_size) {
+  if (!envp || !total_size) return NULL;
+
+  uint16_t total = ENV_MAC_OFFSET + payload_size + ENV_MAC_BYTES;
+  if (total > MAX_ENV_SIZE) return NULL;
+
+  /* Build header(30) + MAC(16) into raw_envelope using existing function */
+  uint16_t base_size;
+  if (!Parser_fBuild_Envelope(envp, &base_size)) return NULL;
+
+  /* raw_envelope now has: [header(30)][MAC(16)]
+   * We need:              [header(30)][payload(N)][MAC(16)]
+   * Shift MAC to make room for payload */
+  if (payload_size > 0) {
+    memmove(raw_envelope + ENV_MAC_OFFSET + payload_size,
+            raw_envelope + ENV_MAC_OFFSET, ENV_MAC_BYTES);
+
+    if (payload) {
+      memcpy(raw_envelope + ENV_MAC_OFFSET, payload, payload_size);
+    }
+  }
+
+  *total_size = total;
+  return raw_envelope;
 }
 
 /**
@@ -163,16 +182,45 @@ bool Parser_fParse_Envelope(char *envp, uint16_t envp_size,
 }
 
 /**
- * @brief
+ * @brief Parse a complete message: header(30) + payload(N) + MAC(16).
  *
- * @param envp
- * @param payload
- * @param payload_size
- * @return true
- * @return false
+ * Extracts envelope fields from the header, provides a pointer into the
+ * payload region, and reads the MAC from the end of the message.
+ *
+ * @param data             Raw message bytes received via QIRD.
+ * @param data_size        Total message length.
+ * @param envp_info        Output: parsed envelope fields.
+ * @param payload_out      Output: pointer to payload start within data buffer.
+ *                         NULL-safe: pass NULL if payload is not needed.
+ * @param payload_size_out Output: payload length in bytes.
+ *                         NULL-safe: pass NULL if not needed.
+ * @retval true   Message parsed successfully.
+ * @retval false  Message too short or invalid.
  */
-bool fParse_Envelope_w_payload(envelope_t *envp, char *payload,
-                               uint16_t payload_size) {
+bool Parser_fParse_Envelope_w_payload(const uint8_t *data, uint16_t data_size,
+                                       envelope_t *envp_info,
+                                       const uint8_t **payload_out,
+                                       uint16_t *payload_size_out) {
+  if (!data || !envp_info) return false;
+  if (data_size < ENV_MAC_OFFSET + ENV_MAC_BYTES) return false;
+
+  /* Parse header fields (version, msg_type, device_id, seq, timestamp).
+   * Parser_fParse_Envelope reads MAC from offset 30, which is wrong when
+   * there is a payload. We fix the MAC below. */
+  if (!Parser_fParse_Envelope((char *)data, data_size, envp_info))
+    return false;
+
+  uint16_t payload_size = data_size - ENV_MAC_OFFSET - ENV_MAC_BYTES;
+
+  /* Fix MAC: read from the actual end of the message */
+  if (payload_size > 0) {
+    memcpy(envp_info->mac, data + ENV_MAC_OFFSET + payload_size, ENV_MAC_BYTES);
+  }
+  /* If payload_size == 0, MAC is already at offset 30 (correct) */
+
+  if (payload_out) *payload_out = data + ENV_MAC_OFFSET;
+  if (payload_size_out) *payload_size_out = payload_size;
+
   return true;
 }
 
@@ -630,99 +678,6 @@ void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc) {
 }
 
 /* ---------------------- Private functions definition ---------------------- */
-
-/**
- * @brief Get the str slice
- *
- * @param str Original string.
- * @param size Size of original string (str).
- * @param offset Offset in bytes.
- * @param num_bytes Number of bytes to get from offset.
- * @param out_str Output string.
- * @param out_size Size of output string.
- */
-static void _get_str_slice(const char *str, size_t size, size_t offset,
-                           size_t num_bytes, char *out_str, size_t out_size) {
-  if (!str || !out_str) return;
-
-  size_t start = offset * 2;
-  size_t length = num_bytes * 2;
-
-  if (start + length > size) {
-    out_str[0] = '\0';
-    return;
-  }
-
-  if (out_size < length + 1) {
-    out_str[0] = '\0';
-    return;
-  }
-
-  memcpy(out_str, str + start, length);
-  out_str[length] = '\0';
-  // Afuera de esta funcion, si necesito obtener un numero de este pedaso,
-  // usar strtoul().
-}
-
-/**
- * @brief
- *
- * @param dest
- * @param size
- * @param num
- * @param num_bytes
- */
-static void __attribute__((unused)) _num_to_hex(char *dest, size_t dest_size,
-                                                uint32_t num,
-                                                uint8_t num_bytes) {
-  int width = num_bytes * 2;
-  snprintf(dest, dest_size, "%0*lX", width, num);
-}
-
-/**
- * @brief Converts a hex string into an array of bytes.
- *
- * @param hexstr Input string (Example: "A1B2C3D4...")
- * @param hex_len Length of input string.
- * @param out Output array where bytes are going to be stored.
- * @param out_len Length of output array.
- * @retval int Amount of bytes converted.
- * @retval -1 in case of error.
- */
-static int8_t _hexstr_to_bytes(const char *hexstr, uint16_t hex_len,
-                               uint8_t *out, uint16_t out_len) {
-  if (!hexstr || !out) return -1;
-
-  if (hex_len % 2 != 0) return -1;
-
-  uint16_t bytes_len = hex_len / 2;
-  if (bytes_len > out_len) return -1;
-
-  for (uint16_t i = 0; i < bytes_len; i++) {
-    char c1 = toupper((unsigned char)hexstr[2 * i]);
-    char c2 = toupper((unsigned char)hexstr[(2 * i) + 1]);
-
-    uint8_t nibble1, nibble2;
-
-    if (c1 >= '0' && c1 <= '9')
-      nibble1 = c1 - '0';
-    else if (c1 >= 'A' && c1 <= 'F')
-      nibble1 = c1 - 'A' + 10;
-    else
-      return -1;
-
-    if (c2 >= '0' && c2 <= '9')
-      nibble2 = c2 - '0';
-    else if (c2 >= 'A' && c2 <= 'F')
-      nibble2 = c2 - 'A' + 10;
-    else
-      return -1;
-
-    out[i] = (nibble1 << 4) | nibble2;
-  }
-
-  return bytes_len;
-}
 
 /**
  * @brief

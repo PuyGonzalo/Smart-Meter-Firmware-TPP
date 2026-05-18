@@ -1,87 +1,36 @@
 /**
  * @file ATCom.h
  * @author Gonzalo Puy (gpuy@fi.uba.ar)
- * @brief 
- * @version 0.1
- * @date 2025-10-26
- * 
- * @copyright Copyright (c) 2025
- * 
-*/
+ * @brief API publica del modulo ATCom — orquesta registro y sesiones
+ *        periodicas contra el HES via BG95.
+ *
+ * Los detalles de las FSM internas (registration / UDP / session) viven en
+ * atcom_registration.h, atcom_udp.h y atcom_session.h respectivamente.
+ *
+ * @version 0.2
+ * @date 2026-05-14
+ */
 
 #ifndef _ATCOM_H_
 #define _ATCOM_H_
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 
-#include "at_core.h"
+#include "at_core.h"  /* re-export para mantener transitive includes en main.c */
+#include "atcom_registration.h"
+#include "atcom_session.h"
 
-typedef enum {
-  COM_REG_INIT,
-  COM_REG_UDP_CTX,
-  COM_REG_SEND,
-  COM_REG_WAIT_SEND_OK,
-  COM_REG_VERIFY_DATA_RDY,
-  COM_REG_WAIT_SEND,
-  COM_REG_WAIT_DATA_RDY,
-  COM_REG_DATA_REQUEST,
-  COM_REG_DATA_REQUEST_WAIT,
-  COM_REG_PROCESS_DATA,
-  COM_REG_ACK,
-  COM_REG_WAIT_ACK_SEND,
-  COM_REG_FINISHED,
-  COM_REG_RESTART_WAIT,
-} registration_state_t;
-
-typedef struct {
-  registration_state_t current_state;
-  uint8_t failure_count;
-  bool needs_hard_reset;
-  int32_t state_timeout_timer;
-  int32_t state_delay_timer;
-  int32_t error_backoff_timer;
-} registration_fsm_t;
-
-typedef enum {
-  COM_UDP_IDLE = 0,
-  COM_UDP_PROCESS_DONE = 1,
-  COM_UDP_QIACT_CHECK,
-  COM_UDP_QIACT_WAIT,
-  COM_UDP_QIOPEN_SEND,
-  COM_UDP_QIOPEN_WAIT,
-  COM_UDP_PROCESS_ERROR,
-} com_udp_st;
-
-typedef struct {
-  com_udp_st current_state;
-  com_udp_st previous_state;
-  bool pdp_context_ready;
-  uint8_t retry_count;
-  uint8_t max_retries;
-  uint8_t activation_failures;
-  uint32_t last_attempt_time;
-  int32_t state_timeout_timer;  // Delay timer for state timeout
-} udp_fsm_t;
-
-/* State timeout values (milliseconds) */
-#define TIMEOUT_INIT              5000
-#define TIMEOUT_UDP_CTX           1800   // 3 minutes for full UDP setup
-#define TIMEOUT_QIACT             1500   // 150 seconds for PDP activation
-#define TIMEOUT_QIOPEN            1500   // 150 seconds for socket open
-#define TIMEOUT_SEND              5000
-#define TIMEOUT_WAIT_RESPONSE     3000
-#define TIMEOUT_DATA_RDY          5000    // 1 minute for data ready check
-#define TIMEOUT_DATA_REQUEST      1000
-#define MAX_FAILURES_HARD_RESET   10     // Hard reset after this many failures
-
+/**
+ * @brief Inicializa los timers internos de las tres FSM (registration,
+ *        UDP context y session). Llamar una vez en boot.
+ */
 void Com_Init(void);
-void Com_network_connection_process();
-int Com_UDP_context_process();
-void Com_register_device_process();
-void Com_process();
 
+/**
+ * @brief Pop the wake-up delay (seconds) requested by HES, then clear it.
+ * @return Delay in seconds, or 0 if HES has not provided a value.
+ */
+uint32_t Com_pop_pending_wake_seconds(void);
 
-
-#endif //_ATCOM_H_
+#endif /* _ATCOM_H_ */
