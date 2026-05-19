@@ -267,9 +267,11 @@ int main(void)
     ATCore_power_off();
 
     /* Sesion fallida tras agotar reintentos (10 fallas consecutivas):
-     * mismo criterio que registration — hard reset para empezar limpio. */
+     * reciclamos el BG95 (off→on) y reintentamos la sesion en vez de hacer
+     * hard reset del MCU. Util cuando la señal NB-IoT viene intermitente. */
     if (Com_session_failed()) {
-      NVIC_SystemReset();
+      ATCore_power_on();
+      continue;
     }
 
     /* HES dictates next wake-up if it sent one in this session's response;
