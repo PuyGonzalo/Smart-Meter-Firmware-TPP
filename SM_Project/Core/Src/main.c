@@ -114,6 +114,22 @@ static void run_pwrkey_status_test(void) {
 }
 #endif
 
+/**
+ * @brief Power on the modem and wait until it's ready for network operations
+ *        (AT alive + SIM READY + network attached). Uses Quectel-recommended
+ *        default timeouts from TCP/IP App Note v1.4 fig 1.
+ *
+ * @return bg95_ready_t — OK if ready, specific failure code otherwise.
+ *         Caller decides action based on which phase failed (MCU reset vs
+ *         sleep until next wake-up).
+ */
+static bg95_ready_t modem_power_on_and_ready(void) {
+  if (!ATCore_power_on()) return BG95_READY_AT_TIMEOUT;
+  return ATCore_wait_until_ready(BG95_READY_AT_TIMEOUT_MS,
+                                  BG95_READY_SIM_TIMEOUT_MS,
+                                  BG95_READY_NET_TIMEOUT_MS);
+}
+
 #ifdef TEST_RTC_WAKEUP
 #define TEST_RTC_PERIOD_SEC  30   /* mas corto que SESSION_PERIOD_SEC para iterar rapido */
 #define TEST_RTC_CYCLES      5    /* cantidad de ciclos antes de trap */
@@ -224,8 +240,12 @@ int main(void)
   run_rtc_wakeup_test();     /* nunca retorna */
 #endif
 
-  /* Power on modem and run registration if needed */
-  ATCore_power_on();
+  /* Power on modem and wait until ready (AT alive + SIM READY + network
+   * attached). Any failure here means the device cannot proceed — reset
+   * the MCU and try a clean boot. */
+  if (modem_power_on_and_ready() != BG95_READY_OK) {
+    NVIC_SystemReset();
+  }
 
   /* Fetch and persist IMEI on first boot (modem must be on) */
   if (!Storage_has_imei()) {
@@ -249,7 +269,9 @@ int main(void)
     RTC_arm_alarm(initial_wake);
     while (!RTC_alarm_fired()) { }
     RTC_clear_alarm_flag();
-    ATCore_power_on();
+    if (modem_power_on_and_ready() != BG95_READY_OK) {
+      NVIC_SystemReset();
+    }
   }
   /* USER CODE END 2 */
 
@@ -260,19 +282,30 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /* Ensure modem is powered and network-ready before each session.
+     * If there is no coverage, sleep one cycle and retry — do not hard
+     * reset for a transient signal issue. Hardware faults (AT/SIM) DO
+     * trigger reset. */
+    while (1) {
+      bg95_ready_t r = modem_power_on_and_ready();
+      if (r == BG95_READY_OK) break;
+      if (r != BG95_READY_NET_TIMEOUT) NVIC_SystemReset();
+      ATCore_power_off();
+      RTC_arm_alarm(SESSION_PERIOD_SEC);
+      while (!RTC_alarm_fired()) { }
+      RTC_clear_alarm_flag();
+    }
+
     Com_session_start();
     while (!Com_is_session_done()) {
       Com_session_process();
     }
     ATCore_power_off();
 
-    /* Sesion fallida tras agotar reintentos (10 fallas consecutivas):
-     * reciclamos el BG95 (off→on) y reintentamos la sesion en vez de hacer
-     * hard reset del MCU. Util cuando la señal NB-IoT viene intermitente. */
-    if (Com_session_failed()) {
-      ATCore_power_on();
-      continue;
-    }
+    /* Session failed after exhausting retries: skip the sleep and let
+     * the next loop iteration cycle the modem (off->on) immediately to
+     * retry. Useful when NB-IoT signal is intermittent. */
+    if (Com_session_failed()) continue;
 
     /* HES dictates next wake-up if it sent one in this session's response;
      * fall back to local default cadence otherwise. */
@@ -283,8 +316,6 @@ int main(void)
     RTC_arm_alarm(next_wake);
     while (!RTC_alarm_fired()) { }
     RTC_clear_alarm_flag();
-
-    ATCore_power_on();
   }
   /* USER CODE END 3 */
 }

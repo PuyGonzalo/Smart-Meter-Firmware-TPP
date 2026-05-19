@@ -154,6 +154,18 @@ bool ATCore_power_off(void) {
   return BG95_power_off(AT_DEVICE) == BG95_OK;
 }
 
+/**
+ * @brief Wrapper over BG95_wait_until_ready(). Verifies the modem is in a
+ *        usable state (AT alive + SIM READY + network attached) before
+ *        network operations. Call after ATCore_power_on().
+ */
+bg95_ready_t ATCore_wait_until_ready(uint32_t at_timeout_ms,
+                                      uint32_t sim_timeout_ms,
+                                      uint32_t net_timeout_ms) {
+  return BG95_wait_until_ready(AT_DEVICE, at_timeout_ms, sim_timeout_ms,
+                                net_timeout_ms);
+}
+
 /**c
  * @brief
  *
