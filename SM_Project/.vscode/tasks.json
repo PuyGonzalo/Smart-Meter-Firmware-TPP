@@ -15,7 +15,16 @@
         {
             "type": "shell",
             "label": "CubeProg: Flash project (SWD)",
-            "command": "/opt/st/stm32cubeclt_1.19.0/STM32CubeProgrammer/bin/STM32_Programmer_CLI",
+            "command": "STM32_Programmer_CLI",
+            "windows": {
+                "command": "${env:STM32CubeCLT_PATH}\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI.exe"
+            },
+            "linux": {
+                "command": "${env:STM32CubeCLT_PATH}/STM32CubeProgrammer/bin/STM32_Programmer_CLI"
+            },
+            "osx": {
+                "command": "${env:STM32CubeCLT_PATH}/STM32CubeProgrammer/bin/STM32_Programmer_CLI"
+            },
             "args": [
                 "--connect",
                 "port=swd",
@@ -55,6 +64,15 @@
             "type": "shell",
             "label": "CubeProg: List all available communication interfaces",
             "command": "STM32_Programmer_CLI",
+            "windows": {
+                "command": "${env:STM32CubeCLT_PATH}\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI.exe"
+            },
+            "linux": {
+                "command": "${env:STM32CubeCLT_PATH}/STM32CubeProgrammer/bin/STM32_Programmer_CLI"
+            },
+            "osx": {
+                "command": "${env:STM32CubeCLT_PATH}/STM32CubeProgrammer/bin/STM32_Programmer_CLI"
+            },
             "args": [
                 "--list"
             ],
