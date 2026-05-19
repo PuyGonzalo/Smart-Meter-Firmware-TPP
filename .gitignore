@@ -69,3 +69,7 @@ SM_Project/.settings/ide.store.json
 # Claude Code
 .claude/
 CLAUDE.md
+
+# Python
+__pycache__/
+*.pyc

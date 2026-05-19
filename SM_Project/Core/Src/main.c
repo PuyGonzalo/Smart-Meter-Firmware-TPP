@@ -30,6 +30,7 @@
 
 #include "ATCom.h"
 #include "delay.h"
+#include "lpm.h"
 #include "printf_retarget.h"
 #include "pulse_counter.h"
 #include "storage.h"
@@ -52,6 +53,7 @@
 /* Tests — descomentar UNO a la vez (o ninguno para flujo normal) */
 // #define TEST_PWRKEY_STATUS
 //#define TEST_RTC_WAKEUP
+//#define TEST_LPM_STOP
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -174,6 +176,50 @@ static void run_rtc_wakeup_test(void) {
   while (1) { HAL_Delay(1000); }
 }
 #endif
+
+#ifdef TEST_LPM_STOP
+#define TEST_LPM_PERIOD_SEC  10
+#define TEST_LPM_CYCLES      5
+
+static void run_lpm_stop_test(void) {
+  printf("\r\n=== LPM STOP TEST ===\r\n");
+  printf("Ciclo: arm alarm(%ds) -> STOP -> wake.\r\n", TEST_LPM_PERIOD_SEC);
+  printf("%d ciclos. Cortocircuita PA8 a GND durante STOP para validar\r\n",
+         TEST_LPM_CYCLES);
+  printf("que el pulso despierta, incrementa y vuelve a dormir.\r\n");
+  printf("Corriente esperada en STOP: ~1-2 uA (DEBUG anade ~100 uA).\r\n\r\n");
+
+  uint32_t prev_pulses = PulseCounter_get_count();
+  printf("Pulsos iniciales: %lu\r\n\r\n", prev_pulses);
+
+  for (uint32_t cycle = 1; cycle <= TEST_LPM_CYCLES; cycle++) {
+    printf("--- Ciclo %lu/%d ---\r\n", cycle, TEST_LPM_CYCLES);
+
+    uint32_t ts_hi_pre, ts_lo_pre;
+    RTC_get_timestamp(&ts_hi_pre, &ts_lo_pre);
+    printf("  [rtc=%lu] Armando alarma %ds y entrando a STOP...\r\n",
+           ts_lo_pre, TEST_LPM_PERIOD_SEC);
+
+    RTC_arm_alarm(TEST_LPM_PERIOD_SEC);
+    LPM_sleep_until_alarm();
+
+    uint32_t ts_hi_post, ts_lo_post;
+    RTC_get_timestamp(&ts_hi_post, &ts_lo_post);
+    uint32_t elapsed = ts_lo_post - ts_lo_pre;
+    int32_t drift = (int32_t)elapsed - (int32_t)TEST_LPM_PERIOD_SEC;
+
+    uint32_t pulses = PulseCounter_get_count();
+    uint32_t delta_pulses = pulses - prev_pulses;
+    prev_pulses = pulses;
+
+    printf("  [rtc=%lu] WAKE! elapsed=%lus drift=%+lds pulses_delta=%lu\r\n\r\n",
+           ts_lo_post, elapsed, drift, delta_pulses);
+  }
+
+  printf("=== %d ciclos OK ===\r\n", TEST_LPM_CYCLES);
+  while (1) { HAL_Delay(1000); }
+}
+#endif
 /* USER CODE END 0 */
 
 /**
@@ -211,6 +257,7 @@ int main(void)
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   delay_init();
+  LPM_init();
   ATCore_init(&huart2);
   Com_Init();
   Storage_init();
@@ -238,6 +285,9 @@ int main(void)
 #endif
 #ifdef TEST_RTC_WAKEUP
   run_rtc_wakeup_test();     /* nunca retorna */
+#endif
+#ifdef TEST_LPM_STOP
+  run_lpm_stop_test();       /* nunca retorna */
 #endif
 
   /* Power on modem and wait until ready (AT alive + SIM READY + network
@@ -267,8 +317,7 @@ int main(void)
   if (initial_wake > 0) {
     ATCore_power_off();
     RTC_arm_alarm(initial_wake);
-    while (!RTC_alarm_fired()) { }
-    RTC_clear_alarm_flag();
+    LPM_sleep_until_alarm();
     if (modem_power_on_and_ready() != BG95_READY_OK) {
       NVIC_SystemReset();
     }
@@ -292,8 +341,7 @@ int main(void)
       if (r != BG95_READY_NET_TIMEOUT) NVIC_SystemReset();
       ATCore_power_off();
       RTC_arm_alarm(SESSION_PERIOD_SEC);
-      while (!RTC_alarm_fired()) { }
-      RTC_clear_alarm_flag();
+      LPM_sleep_until_alarm();
     }
 
     Com_session_start();
@@ -312,10 +360,8 @@ int main(void)
     uint32_t next_wake = Com_pop_pending_wake_seconds();
     if (next_wake == 0) next_wake = SESSION_PERIOD_SEC;
 
-    /* TODO(Phase 5.1): enter Stop mode here instead of busy-wait */
     RTC_arm_alarm(next_wake);
-    while (!RTC_alarm_fired()) { }
-    RTC_clear_alarm_flag();
+    LPM_sleep_until_alarm();
   }
   /* USER CODE END 3 */
 }
