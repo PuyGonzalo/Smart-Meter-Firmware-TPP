@@ -636,6 +636,10 @@ void Com_session_process(void) {
         break;
       }
 
+      if (rx_env.msg_type == MSG_TYPE_HANDSHAKE) {
+        RTC_set_datetime(rx_env.timestamp_high, rx_env.timestamp_low);
+      }
+
       session_dispatch_hes_msg(rx_env.msg_type, payload_ptr, payload_len);
     } break;
 
