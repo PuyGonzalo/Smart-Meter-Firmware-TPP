@@ -78,12 +78,12 @@
 #define TIMEOUT_QIACT_QUERY       2000    /* AT+QIACT? — local modem query (~300 ms per doc) */
 #define TIMEOUT_QIACT_ACTIVATE    150000  /* AT+QIACT=n — doc: 150 s, determined by network */
 #define TIMEOUT_QIOPEN            150000  /* AT+QIOPEN  — doc: 150 s, determined by network */
-#define TIMEOUT_SEND              5000    /* AT+QISENDEX — doc: 120 s, but UDP SEND_OK is local */
-#define TIMEOUT_WAIT_RESPONSE     3000    /* generic inter-state delay */
+#define TIMEOUT_SEND              15000   /* AT+QISENDEX — margin for NB-IoT under marginal signal (CAT-M1 good: ~10 ms measured) */
+#define TIMEOUT_WAIT_RESPONSE     1000    /* polling cadence — HES replies in ~20 ms; 3s wasted time per message */
 #define TIMEOUT_CGPADDR           3000    /* AT+CGPADDR  — local PDP context query */
 #define TIMEOUT_DATA_RDY          5000    /* AT+QIRD=x,0 — local buffer length query */
 #define TIMEOUT_DATA_REQUEST      2000    /* AT+QIRD=x   — local buffer read */
-#define POLL_RESEND_TIMEOUT_MS    30000U  /* Resend last msg if no HES response after 30 s */
+#define POLL_RESEND_TIMEOUT_MS    10000U  /* Resend last msg if no HES response after 10 s */
 #define TIMEOUT_DRAIN_WINDOW      6000   /* total window to drain HES confirm ACK after our ACK */
 #define TIMEOUT_DRAIN_RETRY       500    /* inter-poll delay when QIRD returns 0 */
 
