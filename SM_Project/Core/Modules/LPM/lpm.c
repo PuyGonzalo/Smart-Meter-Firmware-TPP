@@ -64,6 +64,15 @@ static void lpm_uart_pins_restore(void) {
 
 void LPM_sleep_until_alarm(void) {
   do {
+    /* Mask interrupts around STOP entry to close the race between arming the
+     * RTC alarm and executing WFI: if the alarm (or a pulse EXTI) fired in the
+     * window before WFI, its handler would clear the pending bit and WFI would
+     * then sleep forever — the one-shot alarm is already consumed. With PRIMASK
+     * set, a pending-but-masked interrupt still wakes the M0+ from WFI; the
+     * handler runs at __enable_irq() below and sets alarm_fired before the
+     * loop condition is tested. */
+    __disable_irq();
+
     /* Suspend SysTick: its IRQ would wake us every 1 ms otherwise. */
     HAL_SuspendTick();
     lpm_uart_pins_to_analog();
@@ -77,6 +86,10 @@ void LPM_sleep_until_alarm(void) {
     SystemClock_Config();
     lpm_uart_pins_restore();
     HAL_ResumeTick();
+
+    /* Run the pending wake handler (RTC alarm / pulse) now, which sets
+     * alarm_fired, then test the loop condition. */
+    __enable_irq();
   } while (!RTC_alarm_fired());
 
   RTC_clear_alarm_flag();
