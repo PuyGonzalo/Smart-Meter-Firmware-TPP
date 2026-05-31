@@ -418,6 +418,94 @@ def fetch_ipv6(modem: ATModem, t: Timeouts, ctx: int = 1) -> str:
 
 
 # ============================================================================
+# Modem readiness check — mirrors BG95_wait_until_ready() in bg95.c
+# ============================================================================
+
+# Defaults from bg95.h (BG95_READY_*_TIMEOUT_MS), in seconds.
+BG95_READY_AT_TIMEOUT_S = 15.0   # AT respond — typical modem boot ~13s
+BG95_READY_SIM_TIMEOUT_S = 20.0  # AT+CPIN? READY — Quectel recommends 20s
+BG95_READY_NET_TIMEOUT_S = 60.0  # AT+CEREG? stat=1|5 — Quectel recommends 60s
+
+
+class ReadyError(RuntimeError):
+    """Raised when the modem fails any readiness phase. The phase attribute
+    matches the bg95_ready_t enum value in bg95.h."""
+    def __init__(self, phase: str, detail: str = ""):
+        self.phase = phase
+        super().__init__(f"{phase}: {detail}" if detail else phase)
+
+
+def _poll_for_response(modem: ATModem, cmd: str, expected: str,
+                       total_timeout_s: float, poll_interval_s: float) -> bool:
+    """Send `cmd` repeatedly until `expected` appears in the response or
+    `total_timeout_s` elapses. Mirrors _poll_for_response() in bg95.c."""
+    deadline = time.time() + total_timeout_s
+    while time.time() < deadline:
+        resp = modem.send_at(cmd, min(poll_interval_s, 2.0))
+        if resp and expected.encode("ascii") in resp:
+            return True
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        time.sleep(min(poll_interval_s, remaining))
+    return False
+
+
+def wait_until_ready(modem: ATModem,
+                     at_timeout_s: float = BG95_READY_AT_TIMEOUT_S,
+                     sim_timeout_s: float = BG95_READY_SIM_TIMEOUT_S,
+                     net_timeout_s: float = BG95_READY_NET_TIMEOUT_S) -> None:
+    """Verify the modem is fully ready before network operations.
+
+    Mirrors BG95_wait_until_ready() in bg95.c (TCP/IP Application Note v1.4
+    fig 1):
+      1. AT responds OK              — modem alive
+      2. AT+CPIN? = READY            — SIM ready
+      3. AT+CEREG? stat=1|5          — network attached (home or roaming)
+
+    Raises ReadyError with phase = AT_TIMEOUT | SIM_TIMEOUT | NET_TIMEOUT.
+    """
+    print(f"\n{modem._now()} === Modem readiness check ===", flush=True)
+
+    # Phase 1: modem alive
+    t0 = time.time()
+    if not _poll_for_response(modem, "AT", "OK", at_timeout_s, 0.5):
+        raise ReadyError("AT_TIMEOUT", f"no OK in {at_timeout_s}s")
+    print(f"{modem._now()} [1/3] AT alive ({(time.time() - t0) * 1000:.0f}ms)",
+          flush=True)
+
+    # Phase 2: SIM ready
+    t0 = time.time()
+    if not _poll_for_response(modem, "AT+CPIN?", "READY", sim_timeout_s, 1.0):
+        raise ReadyError("SIM_TIMEOUT", f"CPIN not READY in {sim_timeout_s}s")
+    print(f"{modem._now()} [2/3] SIM READY ({(time.time() - t0) * 1000:.0f}ms)",
+          flush=True)
+
+    # Phase 3: PS network attached. CEREG returns "+CEREG: <n>,<stat>".
+    # stat=1 (home) or stat=5 (roaming) are OK. Poll every 2s, same as
+    # firmware (Quectel recommends for the 60s attach window).
+    t0 = time.time()
+    deadline = time.time() + net_timeout_s
+    cereg_re = re.compile(r"\+CEREG:\s*\d+\s*,\s*(\d+)")
+    while time.time() < deadline:
+        resp = modem.send_at("AT+CEREG?", 1.0)
+        if resp:
+            m = cereg_re.search(resp.decode("ascii", "replace"))
+            if m and m.group(1) in ("1", "5"):
+                stat_name = "home" if m.group(1) == "1" else "roaming"
+                print(f"{modem._now()} [3/3] CEREG stat={m.group(1)} "
+                      f"({stat_name}) ({(time.time() - t0) * 1000:.0f}ms)",
+                      flush=True)
+                return
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        time.sleep(min(2.0, remaining))
+    raise ReadyError("NET_TIMEOUT",
+                     f"CEREG never reached stat=1|5 in {net_timeout_s}s")
+
+
+# ============================================================================
 # UDP context + QIOPEN setup
 # ============================================================================
 
@@ -901,6 +989,16 @@ def main():
     p.add_argument("--qiopen-timeout", type=float, default=30.0)
     p.add_argument("--qiact-timeout", type=float, default=150.0)
 
+    # Readiness check (mirrors BG95_wait_until_ready() in bg95.c)
+    p.add_argument("--ready-at-timeout", type=float, default=BG95_READY_AT_TIMEOUT_S,
+                   help="Phase 1: AT response timeout (s)")
+    p.add_argument("--ready-sim-timeout", type=float, default=BG95_READY_SIM_TIMEOUT_S,
+                   help="Phase 2: AT+CPIN? READY timeout (s)")
+    p.add_argument("--ready-net-timeout", type=float, default=BG95_READY_NET_TIMEOUT_S,
+                   help="Phase 3: AT+CEREG? stat=1|5 timeout (s)")
+    p.add_argument("--skip-ready-check", action="store_true",
+                   help="Skip the readiness check (assume modem is already attached)")
+
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--sessions", type=int, default=1)
     p.add_argument("--cold-start-between", action="store_true",
@@ -939,9 +1037,20 @@ def main():
     stats = Stats()
 
     try:
-        if not modem.send_at("AT", 2.0):
-            print("✗ Modem doesn't respond to AT — aborting", file=sys.stderr)
-            return 1
+        if args.skip_ready_check:
+            if not modem.send_at("AT", 2.0):
+                print("✗ Modem doesn't respond to AT — aborting", file=sys.stderr)
+                return 1
+        else:
+            try:
+                wait_until_ready(modem,
+                                 at_timeout_s=args.ready_at_timeout,
+                                 sim_timeout_s=args.ready_sim_timeout,
+                                 net_timeout_s=args.ready_net_timeout)
+            except ReadyError as e:
+                print(f"✗ Modem not ready ({e.phase}): {e} — aborting",
+                      file=sys.stderr)
+                return 1
 
         setup_pdp_and_udp(modem, t, args.host, args.port_hes,
                           conn_id=args.conn_id)
