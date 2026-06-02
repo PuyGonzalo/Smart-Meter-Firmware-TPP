@@ -14,6 +14,7 @@
 #include "atcom_udp.h"
 #include "bg95_at_cmd_lib.h"
 #include "delay.h"
+#include "iwdg.h"
 #include "rlp.h"
 #include "rtc.h"
 #include "storage.h"
@@ -122,8 +123,9 @@ bool Com_register_device_blocking(uint32_t timeout_ms) {
       return false;
     }
 
-    // Optional: Feed watchdog here
-    // HAL_IWDG_Refresh(&hiwdg);
+    // Feed the watchdog: registration can block for minutes (QIACT/QIOPEN
+    // retries), far longer than the IWDG window.
+    HAL_IWDG_Refresh(&hiwdg);
 
     // Small delay to prevent tight polling
     HAL_Delay(10);

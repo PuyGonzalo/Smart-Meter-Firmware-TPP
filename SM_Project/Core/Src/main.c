@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dma.h"
+#include "iwdg.h"
 #include "usart.h"
 #include "rtc.h"
 #include "gpio.h"
@@ -112,7 +113,7 @@ static void run_pwrkey_status_test(void) {
   bool pass = !s0 && on_ok && s1 && off_ok;
   printf("=== RESULT: %s ===\r\n\r\n", pass ? "PASS" : "FAIL");
 
-  while (1) { HAL_Delay(1000); }
+  while (1) { HAL_IWDG_Refresh(&hiwdg); HAL_Delay(1000); }
 }
 #endif
 
@@ -163,7 +164,7 @@ static void run_rtc_wakeup_test(void) {
            HAL_GetTick(), TEST_RTC_PERIOD_SEC);
     uint32_t t_arm = HAL_GetTick();
     RTC_arm_alarm(TEST_RTC_PERIOD_SEC);
-    while (!RTC_alarm_fired()) { /* busy-wait */ }
+    while (!RTC_alarm_fired()) { HAL_IWDG_Refresh(&hiwdg); }
     uint32_t elapsed = HAL_GetTick() - t_arm;
     RTC_clear_alarm_flag();
 
@@ -173,7 +174,7 @@ static void run_rtc_wakeup_test(void) {
   }
 
   printf("=== %d ciclos completados ===\r\n", TEST_RTC_CYCLES);
-  while (1) { HAL_Delay(1000); }
+  while (1) { HAL_IWDG_Refresh(&hiwdg); HAL_Delay(1000); }
 }
 #endif
 
@@ -200,8 +201,7 @@ static void run_lpm_stop_test(void) {
     printf("  [rtc=%lu] Armando alarma %ds y entrando a STOP...\r\n",
            ts_lo_pre, TEST_LPM_PERIOD_SEC);
 
-    RTC_arm_alarm(TEST_LPM_PERIOD_SEC);
-    LPM_sleep_until_alarm();
+    LPM_sleep_seconds(TEST_LPM_PERIOD_SEC);
 
     uint32_t ts_hi_post, ts_lo_post;
     RTC_get_timestamp(&ts_hi_post, &ts_lo_post);
@@ -217,7 +217,7 @@ static void run_lpm_stop_test(void) {
   }
 
   printf("=== %d ciclos OK ===\r\n", TEST_LPM_CYCLES);
-  while (1) { HAL_Delay(1000); }
+  while (1) { HAL_IWDG_Refresh(&hiwdg); HAL_Delay(1000); }
 }
 #endif
 /* USER CODE END 0 */
@@ -255,6 +255,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_LPUART1_UART_Init();
   MX_RTC_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
   delay_init();
   LPM_init();
@@ -316,8 +317,7 @@ int main(void)
   uint32_t initial_wake = Com_pop_pending_wake_seconds();
   if (initial_wake > 0) {
     ATCore_power_off();
-    RTC_arm_alarm(initial_wake);
-    LPM_sleep_until_alarm();
+    LPM_sleep_seconds(initial_wake);
     if (modem_power_on_and_ready() != BG95_READY_OK) {
       NVIC_SystemReset();
     }
@@ -340,12 +340,12 @@ int main(void)
       if (r == BG95_READY_OK) break;
       if (r != BG95_READY_NET_TIMEOUT) NVIC_SystemReset();
       ATCore_power_off();
-      RTC_arm_alarm(SESSION_PERIOD_SEC);
-      LPM_sleep_until_alarm();
+      LPM_sleep_seconds(SESSION_PERIOD_SEC);
     }
 
     Com_session_start();
     while (!Com_is_session_done()) {
+      HAL_IWDG_Refresh(&hiwdg);
       Com_session_process();
     }
     ATCore_power_off();
@@ -360,8 +360,7 @@ int main(void)
     uint32_t next_wake = Com_pop_pending_wake_seconds();
     if (next_wake == 0) next_wake = SESSION_PERIOD_SEC;
 
-    RTC_arm_alarm(next_wake);
-    LPM_sleep_until_alarm();
+    LPM_sleep_seconds(next_wake);
   }
   /* USER CODE END 3 */
 }
@@ -388,10 +387,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI
+                              |RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {

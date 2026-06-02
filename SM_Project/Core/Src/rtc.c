@@ -303,3 +303,4 @@ bool RTC_set_datetime(uint32_t ts_high, uint32_t ts_low) {
 }
 
 /* USER CODE END 1 */
+
