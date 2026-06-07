@@ -49,6 +49,63 @@
             "problemMatcher": []
         },
         {
+            "type": "shell",
+            "label": "CubeProg: Flash Release (SWD)",
+            "command": "STM32_Programmer_CLI",
+            "windows": {
+                "command": "${env:STM32CubeCLT_PATH}\\STM32CubeProgrammer\\bin\\STM32_Programmer_CLI.exe"
+            },
+            "linux": {
+                "command": "${env:STM32CubeCLT_PATH}/STM32CubeProgrammer/bin/STM32_Programmer_CLI"
+            },
+            "osx": {
+                "command": "${env:STM32CubeCLT_PATH}/STM32CubeProgrammer/bin/STM32_Programmer_CLI"
+            },
+            "args": [
+                "--connect",
+                "port=swd",
+                "--download",
+                "${workspaceFolder}/build/Release/Smart-Meter-FW-TPP.elf",
+                "-hardRst",
+                "-rst",
+                "--start"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: configure (Release)",
+            "command": "configure",
+            "preset": "Release",
+            "problemMatcher": [],
+            "detail": "Configure the Release preset (creates build/Release)"
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: clean rebuild (Release)",
+            "command": "build",
+            "targets": [
+                "all"
+            ],
+            "preset": "Release",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "Build (Release, no -DDEBUG -> STOP limpio para medir)"
+        },
+        {
+            "label": "Build + Flash (Release)",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CMake: configure (Release)",
+                "CMake: clean rebuild (Release)",
+                "CubeProg: Flash Release (SWD)"
+            ],
+            "problemMatcher": []
+        },
+        {
             "type": "cmake",
             "label": "CMake: clean rebuild",
             "command": "build",
