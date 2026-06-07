@@ -265,6 +265,21 @@ void RTC_arm_alarm(uint32_t seconds) {
   HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN);
 }
 
+uint32_t RTC_get_subsecond_ticks(void) {
+  RTC_TimeTypeDef sTime;
+  RTC_DateTypeDef sDate;
+
+  HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+  HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN); /* unlock shadow regs */
+
+  uint32_t sec_of_day = (uint32_t)sTime.Hours * 3600u +
+                        (uint32_t)sTime.Minutes * 60u + sTime.Seconds;
+  /* SSR counts down PREDIV_S..0 within each second; SecondFraction = PREDIV_S.
+   * frac is 0 at the second boundary, growing to 255 — i.e. 1/256 s units. */
+  uint32_t frac = sTime.SecondFraction - sTime.SubSeconds;
+  return sec_of_day * 256u + frac;
+}
+
 bool RTC_alarm_fired(void) { return alarm_fired; }
 
 void RTC_clear_alarm_flag(void) { alarm_fired = false; }
