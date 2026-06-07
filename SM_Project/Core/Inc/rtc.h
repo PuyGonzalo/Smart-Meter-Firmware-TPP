@@ -76,6 +76,17 @@ bool RTC_alarm_fired(void);
  */
 void RTC_clear_alarm_flag(void);
 
+/**
+ * @brief  True if the LSE CSS detected an LSE failure (flag set in ISR).
+ */
+bool RTC_lse_failed(void);
+
+/**
+ * @brief  Failover the RTC clock from the failed LSE to the LSI. Resets the
+ *         backup domain (loses calendar + BKP_DR0) and re-inits the RTC.
+ */
+void RTC_switch_to_lsi(void);
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

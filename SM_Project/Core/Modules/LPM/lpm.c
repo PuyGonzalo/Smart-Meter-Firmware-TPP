@@ -95,7 +95,11 @@ void LPM_sleep_until_alarm(void) {
     /* Run the pending wake handler (RTC alarm / pulse) now, which sets
      * alarm_fired, then test the loop condition. */
     __enable_irq();
-  } while (!RTC_alarm_fired());
+
+    /* If the LSE died during STOP, EXTI19 wakes us but the RTC alarm will
+     * never fire (the RTC is stalled). Break out so the main loop can run the
+     * LSI fallback instead of re-entering STOP forever. */
+  } while (!RTC_alarm_fired() && !RTC_lse_failed());
 
   RTC_clear_alarm_flag();
 }

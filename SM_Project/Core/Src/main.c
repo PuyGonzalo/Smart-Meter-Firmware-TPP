@@ -259,6 +259,12 @@ int main(void)
   /* USER CODE BEGIN 2 */
   delay_init();
   LPM_init();
+
+  /* Enable the LSE CSS interrupt (EXTI19 -> RTC_IRQn). SystemClock_Config
+   * already armed the CSS detector; this adds the IT path so a LSE failure
+   * wakes us and triggers the runtime fallback to LSI. The EXTI/CIER bits
+   * survive STOP, so this only needs to be set once. */
+  HAL_RCCEx_EnableLSECSS_IT();
   ATCore_init(&huart2);
   Com_Init();
   Storage_init();
@@ -331,6 +337,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /* If the LSE died (CSS), switch the RTC clock to LSI now (outside ISR). */
+    if (RTC_lse_failed()) RTC_switch_to_lsi();
+
     /* Ensure modem is powered and network-ready before each session.
      * If there is no coverage, sleep one cycle and retry — do not hard
      * reset for a transient signal issue. Hardware faults (AT/SIM) DO
@@ -439,9 +448,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1) {
-  }
+  NVIC_SystemReset();
   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT
