@@ -77,8 +77,7 @@ void NMI_Handler(void)
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
-  while (1) {
-  }
+  NVIC_SystemReset();
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
@@ -93,6 +92,7 @@ void HardFault_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    NVIC_SystemReset();
     /* USER CODE END W1_HardFault_IRQn 0 */
   }
 }
@@ -150,7 +150,10 @@ void SysTick_Handler(void)
 void RTC_IRQHandler(void)
 {
   /* USER CODE BEGIN RTC_IRQn 0 */
-
+  if (__HAL_RCC_LSECSS_EXTI_GET_FLAG()) {
+    __HAL_RCC_LSECSS_EXTI_CLEAR_FLAG();
+    HAL_RCCEx_LSECSS_IRQHandler();   /* checks RCC flag, calls callback, clears RCC IT */
+  }
   /* USER CODE END RTC_IRQn 0 */
   HAL_RTC_AlarmIRQHandler(&hrtc);
   /* USER CODE BEGIN RTC_IRQn 1 */

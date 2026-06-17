@@ -76,6 +76,24 @@ bool RTC_alarm_fired(void);
  */
 void RTC_clear_alarm_flag(void);
 
+/**
+ * @brief  Monotonic-ish fine timestamp in 1/256 s ticks (seconds-of-day scaled
+ *         plus the RTC sub-second fraction). Keeps advancing through STOP, so it
+ *         can time short intervals where HAL_GetTick is frozen. Wraps once/day.
+ */
+uint32_t RTC_get_subsecond_ticks(void);
+
+/**
+ * @brief  True if the LSE CSS detected an LSE failure (flag set in ISR).
+ */
+bool RTC_lse_failed(void);
+
+/**
+ * @brief  Failover the RTC clock from the failed LSE to the LSI. Resets the
+ *         backup domain (loses calendar + BKP_DR0) and re-inits the RTC.
+ */
+void RTC_switch_to_lsi(void);
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

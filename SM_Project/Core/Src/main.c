@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dma.h"
+#include "iwdg.h"
 #include "usart.h"
 #include "rtc.h"
 #include "gpio.h"
@@ -30,6 +31,7 @@
 
 #include "ATCom.h"
 #include "delay.h"
+#include "lpm.h"
 #include "printf_retarget.h"
 #include "pulse_counter.h"
 #include "storage.h"
@@ -52,6 +54,7 @@
 /* Tests — descomentar UNO a la vez (o ninguno para flujo normal) */
 // #define TEST_PWRKEY_STATUS
 //#define TEST_RTC_WAKEUP
+//#define TEST_LPM_STOP
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -110,9 +113,25 @@ static void run_pwrkey_status_test(void) {
   bool pass = !s0 && on_ok && s1 && off_ok;
   printf("=== RESULT: %s ===\r\n\r\n", pass ? "PASS" : "FAIL");
 
-  while (1) { HAL_Delay(1000); }
+  while (1) { HAL_IWDG_Refresh(&hiwdg); HAL_Delay(1000); }
 }
 #endif
+
+/**
+ * @brief Power on the modem and wait until it's ready for network operations
+ *        (AT alive + SIM READY + network attached). Uses Quectel-recommended
+ *        default timeouts from TCP/IP App Note v1.4 fig 1.
+ *
+ * @return bg95_ready_t — OK if ready, specific failure code otherwise.
+ *         Caller decides action based on which phase failed (MCU reset vs
+ *         sleep until next wake-up).
+ */
+static bg95_ready_t modem_power_on_and_ready(void) {
+  if (!ATCore_power_on()) return BG95_READY_AT_TIMEOUT;
+  return ATCore_wait_until_ready(BG95_READY_AT_TIMEOUT_MS,
+                                  BG95_READY_SIM_TIMEOUT_MS,
+                                  BG95_READY_NET_TIMEOUT_MS);
+}
 
 #ifdef TEST_RTC_WAKEUP
 #define TEST_RTC_PERIOD_SEC  30   /* mas corto que SESSION_PERIOD_SEC para iterar rapido */
@@ -145,7 +164,7 @@ static void run_rtc_wakeup_test(void) {
            HAL_GetTick(), TEST_RTC_PERIOD_SEC);
     uint32_t t_arm = HAL_GetTick();
     RTC_arm_alarm(TEST_RTC_PERIOD_SEC);
-    while (!RTC_alarm_fired()) { /* busy-wait */ }
+    while (!RTC_alarm_fired()) { HAL_IWDG_Refresh(&hiwdg); }
     uint32_t elapsed = HAL_GetTick() - t_arm;
     RTC_clear_alarm_flag();
 
@@ -155,7 +174,50 @@ static void run_rtc_wakeup_test(void) {
   }
 
   printf("=== %d ciclos completados ===\r\n", TEST_RTC_CYCLES);
-  while (1) { HAL_Delay(1000); }
+  while (1) { HAL_IWDG_Refresh(&hiwdg); HAL_Delay(1000); }
+}
+#endif
+
+#ifdef TEST_LPM_STOP
+#define TEST_LPM_PERIOD_SEC  10
+#define TEST_LPM_CYCLES      5
+
+static void run_lpm_stop_test(void) {
+  printf("\r\n=== LPM STOP TEST ===\r\n");
+  printf("Ciclo: arm alarm(%ds) -> STOP -> wake.\r\n", TEST_LPM_PERIOD_SEC);
+  printf("%d ciclos. Cortocircuita PA8 a GND durante STOP para validar\r\n",
+         TEST_LPM_CYCLES);
+  printf("que el pulso despierta, incrementa y vuelve a dormir.\r\n");
+  printf("Corriente esperada en STOP: ~1-2 uA (DEBUG anade ~100 uA).\r\n\r\n");
+
+  uint32_t prev_pulses = PulseCounter_get_count();
+  printf("Pulsos iniciales: %lu\r\n\r\n", prev_pulses);
+
+  for (uint32_t cycle = 1; cycle <= TEST_LPM_CYCLES; cycle++) {
+    printf("--- Ciclo %lu/%d ---\r\n", cycle, TEST_LPM_CYCLES);
+
+    uint32_t ts_hi_pre, ts_lo_pre;
+    RTC_get_timestamp(&ts_hi_pre, &ts_lo_pre);
+    printf("  [rtc=%lu] Armando alarma %ds y entrando a STOP...\r\n",
+           ts_lo_pre, TEST_LPM_PERIOD_SEC);
+
+    LPM_sleep_seconds(TEST_LPM_PERIOD_SEC);
+
+    uint32_t ts_hi_post, ts_lo_post;
+    RTC_get_timestamp(&ts_hi_post, &ts_lo_post);
+    uint32_t elapsed = ts_lo_post - ts_lo_pre;
+    int32_t drift = (int32_t)elapsed - (int32_t)TEST_LPM_PERIOD_SEC;
+
+    uint32_t pulses = PulseCounter_get_count();
+    uint32_t delta_pulses = pulses - prev_pulses;
+    prev_pulses = pulses;
+
+    printf("  [rtc=%lu] WAKE! elapsed=%lus drift=%+lds pulses_delta=%lu\r\n\r\n",
+           ts_lo_post, elapsed, drift, delta_pulses);
+  }
+
+  printf("=== %d ciclos OK ===\r\n", TEST_LPM_CYCLES);
+  while (1) { HAL_IWDG_Refresh(&hiwdg); HAL_Delay(1000); }
 }
 #endif
 /* USER CODE END 0 */
@@ -193,8 +255,16 @@ int main(void)
   MX_USART2_UART_Init();
   MX_LPUART1_UART_Init();
   MX_RTC_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
   delay_init();
+  LPM_init();
+
+  /* Enable the LSE CSS interrupt (EXTI19 -> RTC_IRQn). SystemClock_Config
+   * already armed the CSS detector; this adds the IT path so a LSE failure
+   * wakes us and triggers the runtime fallback to LSI. The EXTI/CIER bits
+   * survive STOP, so this only needs to be set once. */
+  HAL_RCCEx_EnableLSECSS_IT();
   ATCore_init(&huart2);
   Com_Init();
   Storage_init();
@@ -223,9 +293,16 @@ int main(void)
 #ifdef TEST_RTC_WAKEUP
   run_rtc_wakeup_test();     /* nunca retorna */
 #endif
+#ifdef TEST_LPM_STOP
+  run_lpm_stop_test();       /* nunca retorna */
+#endif
 
-  /* Power on modem and run registration if needed */
-  ATCore_power_on();
+  /* Power on modem and wait until ready (AT alive + SIM READY + network
+   * attached). Any failure here means the device cannot proceed — reset
+   * the MCU and try a clean boot. */
+  if (modem_power_on_and_ready() != BG95_READY_OK) {
+    NVIC_SystemReset();
+  }
 
   /* Fetch and persist IMEI on first boot (modem must be on) */
   if (!Storage_has_imei()) {
@@ -246,10 +323,10 @@ int main(void)
   uint32_t initial_wake = Com_pop_pending_wake_seconds();
   if (initial_wake > 0) {
     ATCore_power_off();
-    RTC_arm_alarm(initial_wake);
-    while (!RTC_alarm_fired()) { }
-    RTC_clear_alarm_flag();
-    ATCore_power_on();
+    LPM_sleep_seconds(initial_wake);
+    if (modem_power_on_and_ready() != BG95_READY_OK) {
+      NVIC_SystemReset();
+    }
   }
   /* USER CODE END 2 */
 
@@ -260,29 +337,39 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /* If the LSE died (CSS), switch the RTC clock to LSI now (outside ISR). */
+    if (RTC_lse_failed()) RTC_switch_to_lsi();
+
+    /* Ensure modem is powered and network-ready before each session.
+     * If there is no coverage, sleep one cycle and retry — do not hard
+     * reset for a transient signal issue. Hardware faults (AT/SIM) DO
+     * trigger reset. */
+    while (1) {
+      bg95_ready_t r = modem_power_on_and_ready();
+      if (r == BG95_READY_OK) break;
+      if (r != BG95_READY_NET_TIMEOUT) NVIC_SystemReset();
+      ATCore_power_off();
+      LPM_sleep_seconds(SESSION_PERIOD_SEC);
+    }
+
     Com_session_start();
     while (!Com_is_session_done()) {
+      HAL_IWDG_Refresh(&hiwdg);
       Com_session_process();
     }
     ATCore_power_off();
 
-    /* Sesion fallida tras agotar reintentos (10 fallas consecutivas):
-     * mismo criterio que registration — hard reset para empezar limpio. */
-    if (Com_session_failed()) {
-      NVIC_SystemReset();
-    }
+    /* Session failed after exhausting retries: skip the sleep and let
+     * the next loop iteration cycle the modem (off->on) immediately to
+     * retry. Useful when NB-IoT signal is intermittent. */
+    if (Com_session_failed()) continue;
 
     /* HES dictates next wake-up if it sent one in this session's response;
      * fall back to local default cadence otherwise. */
     uint32_t next_wake = Com_pop_pending_wake_seconds();
     if (next_wake == 0) next_wake = SESSION_PERIOD_SEC;
 
-    /* TODO(Phase 5.1): enter Stop mode here instead of busy-wait */
-    RTC_arm_alarm(next_wake);
-    while (!RTC_alarm_fired()) { }
-    RTC_clear_alarm_flag();
-
-    ATCore_power_on();
+    LPM_sleep_seconds(next_wake);
   }
   /* USER CODE END 3 */
 }
@@ -309,10 +396,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI
+                              |RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -359,9 +448,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1) {
-  }
+  NVIC_SystemReset();
   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT

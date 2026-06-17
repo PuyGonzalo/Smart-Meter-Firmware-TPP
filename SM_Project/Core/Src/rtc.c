@@ -24,6 +24,7 @@
 #include <stdbool.h>
 
 static volatile bool alarm_fired = false;
+static volatile bool lse_failed = false;
 
 /* Days in each month (non-leap year). Index 0 unused. */
 static const uint8_t days_in_month[] = {
@@ -264,6 +265,21 @@ void RTC_arm_alarm(uint32_t seconds) {
   HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BIN);
 }
 
+uint32_t RTC_get_subsecond_ticks(void) {
+  RTC_TimeTypeDef sTime;
+  RTC_DateTypeDef sDate;
+
+  HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+  HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN); /* unlock shadow regs */
+
+  uint32_t sec_of_day = (uint32_t)sTime.Hours * 3600u +
+                        (uint32_t)sTime.Minutes * 60u + sTime.Seconds;
+  /* SSR counts down PREDIV_S..0 within each second; SecondFraction = PREDIV_S.
+   * frac is 0 at the second boundary, growing to 255 — i.e. 1/256 s units. */
+  uint32_t frac = sTime.SecondFraction - sTime.SubSeconds;
+  return sec_of_day * 256u + frac;
+}
+
 bool RTC_alarm_fired(void) { return alarm_fired; }
 
 void RTC_clear_alarm_flag(void) { alarm_fired = false; }
@@ -271,6 +287,37 @@ void RTC_clear_alarm_flag(void) { alarm_fired = false; }
 void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *hrtc_cb) {
   (void)hrtc_cb;
   alarm_fired = true;
+}
+
+/* CSS callback: the HAL detected the LSE has stopped. Only raise a flag here;
+ * the heavy reconfiguration runs in the main loop via RTC_switch_to_lsi(). */
+void HAL_RCCEx_LSECSS_Callback(void) { lse_failed = true; }
+
+bool RTC_lse_failed(void) { return lse_failed; }
+
+/* Failover the RTC clock from the dead LSE to the LSI (already running). The
+ * RTCSEL field can only change after a backup-domain reset, which also wipes
+ * the calendar and BKP_DR0 — so we re-run MX_RTC_Init() to restore a default
+ * time and the 0xBEBE marker. After this both IWDG and RTC run on LSI. */
+void RTC_switch_to_lsi(void) {
+  HAL_RCCEx_DisableLSECSS();
+
+  HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_BACKUPRESET_FORCE();
+  __HAL_RCC_BACKUPRESET_RELEASE();
+
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+  HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
+
+  __HAL_RCC_RTC_ENABLE();
+
+  /* BKP_DR0 is 0 after the reset, so this re-initializes the calendar fully
+   * (default 2000-01-01) and rewrites the 0xBEBE marker. */
+  MX_RTC_Init();
+
+  lse_failed = false;
 }
 
 bool RTC_set_datetime(uint32_t ts_high, uint32_t ts_low) {
@@ -303,3 +350,4 @@ bool RTC_set_datetime(uint32_t ts_high, uint32_t ts_low) {
 }
 
 /* USER CODE END 1 */
+

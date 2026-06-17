@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "iwdg.h"
 #include "main.h"
 #include "stm32l0xx_hal_def.h"
 #include "stm32l0xx_hal_dma.h"
@@ -145,6 +146,7 @@ bg95_status_t BG95_power_on(BG95_t *bg95) {
   const char at_cmd[] = "AT\r\n";
 
   while ((HAL_GetTick() - start) < BG95_BOOT_TIMEOUT_MS) {
+    HAL_IWDG_Refresh(&hiwdg); /* boot can outlast the IWDG window */
     HAL_Delay(BG95_AT_POLL_INTERVAL_MS);
 
     BG95_reset_rx(bg95);
@@ -193,6 +195,7 @@ bg95_status_t BG95_power_off(BG95_t *bg95) {
   /* Poll STATUS until LOW = module fully off */
   uint32_t start = HAL_GetTick();
   while ((HAL_GetTick() - start) < BG95_POWEROFF_TIMEOUT_MS) {
+    HAL_IWDG_Refresh(&hiwdg); /* modem can take tens of seconds to power down */
     if (HAL_GPIO_ReadPin(bg95->status_pin.GPIOx,
                          bg95->status_pin.GPIO_Pin) == GPIO_PIN_RESET) {
       _disable_lvl_shifter(bg95);
@@ -204,6 +207,104 @@ bg95_status_t BG95_power_off(BG95_t *bg95) {
   /* Timeout — disable level shifter anyway */
   _disable_lvl_shifter(bg95);
   return BG95_CMD_RESP_ERROR;
+}
+
+/**
+ * @brief Internal helper: send an AT command and wait until the response
+ *        contains "needle". Polls every poll_interval_ms.
+ *
+ * @param overall_timeout_ms  Total time before giving up.
+ * @return true if needle was found, false on timeout.
+ */
+static bool _poll_for_response(BG95_t *bg95, const char *cmd,
+                                const char *needle,
+                                uint32_t overall_timeout_ms,
+                                uint32_t poll_interval_ms) {
+  uint32_t start = HAL_GetTick();
+  uint16_t cmd_len = (uint16_t)strlen(cmd);
+
+  while ((HAL_GetTick() - start) < overall_timeout_ms) {
+    HAL_IWDG_Refresh(&hiwdg); /* AT/SIM poll windows can exceed the IWDG timeout */
+    BG95_reset_rx(bg95);
+
+    if (BG95_send_command(bg95, cmd, cmd_len) == BG95_OK) {
+      /* Wait up to 1s for response */
+      uint32_t resp_start = HAL_GetTick();
+      while (!bg95->responseReady && (HAL_GetTick() - resp_start) < 1000) {
+        /* spin */
+      }
+      if (bg95->responseReady && strstr(bg95->rxBuffer, needle) != NULL) {
+        BG95_reset_rx(bg95);
+        return true;
+      }
+    }
+    HAL_Delay(poll_interval_ms);
+  }
+  return false;
+}
+
+/**
+ * @brief Verify the modem is fully ready before network operations
+ *        (QIACT/QIOPEN). Follows the Quectel flow chart from TCP/IP
+ *        Application Note v1.4, fig 1:
+ *
+ *          1. AT responds OK              — modem alive
+ *          2. AT+CPIN? = READY            — SIM ready
+ *          3. AT+CEREG? stat=1|5          — network attached (home or roaming)
+ *
+ *        Call after BG95_power_on() and before QIACT. Ensures the modem is
+ *        in a usable state, avoiding QIACT cascade failures that would
+ *        trigger handle_failure + backoff loops.
+ *
+ * @return BG95_READY_OK if all three phases pass.
+ *         Specific failure code so callers can decide an appropriate action.
+ */
+bg95_ready_t BG95_wait_until_ready(BG95_t *bg95,
+                                    uint32_t at_timeout_ms,
+                                    uint32_t sim_timeout_ms,
+                                    uint32_t net_timeout_ms) {
+  if (bg95 == NULL) return BG95_READY_AT_TIMEOUT;
+
+  /* Phase 1: AT respond — modem alive */
+  if (!_poll_for_response(bg95, "AT\r\n", "OK", at_timeout_ms, 500)) {
+    return BG95_READY_AT_TIMEOUT;
+  }
+
+  /* Phase 2: SIM ready */
+  if (!_poll_for_response(bg95, "AT+CPIN?\r\n", "READY", sim_timeout_ms, 1000)) {
+    return BG95_READY_SIM_TIMEOUT;
+  }
+
+  /* Phase 3: PS network attached. CEREG returns "+CEREG: <n>,<stat>".
+   * stat=1 (home) or stat=5 (roaming) are OK. Poll every 2s as Quectel
+   * recommends for the 60s attach window. */
+  uint32_t net_start = HAL_GetTick();
+  while ((HAL_GetTick() - net_start) < net_timeout_ms) {
+    HAL_IWDG_Refresh(&hiwdg); /* the network attach window (~60s) outlasts the IWDG */
+    BG95_reset_rx(bg95);
+    if (BG95_send_command(bg95, "AT+CEREG?\r\n", 11) == BG95_OK) {
+      uint32_t resp_start = HAL_GetTick();
+      while (!bg95->responseReady && (HAL_GetTick() - resp_start) < 1000) {
+        /* spin */
+      }
+      if (bg95->responseReady) {
+        char *cereg = strstr(bg95->rxBuffer, "+CEREG:");
+        if (cereg != NULL) {
+          /* Skip "+CEREG: <n>," and read <stat> */
+          char *comma = strchr(cereg, ',');
+          if (comma != NULL) {
+            char stat = *(comma + 1);
+            if (stat == '1' || stat == '5') {
+              BG95_reset_rx(bg95);
+              return BG95_READY_OK;
+            }
+          }
+        }
+      }
+    }
+    HAL_Delay(2000);
+  }
+  return BG95_READY_NET_TIMEOUT;
 }
 
 /**

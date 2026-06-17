@@ -29,6 +29,12 @@
 #define BG95_AT_POLL_INTERVAL_MS 500   /* Interval between AT polling attempts */
 #define BG95_POWEROFF_TIMEOUT_MS 30000 /* Max wait for STATUS LOW after PWRKEY off pulse */
 
+/* Defaults for BG95_wait_until_ready() — values from TCP/IP Application
+ * Note v1.4, fig 1 (page 11 of the PDF). */
+#define BG95_READY_AT_TIMEOUT_MS   15000  /* AT respond — typical modem boot ~13s */
+#define BG95_READY_SIM_TIMEOUT_MS  20000  /* AT+CPIN? READY — Quectel recommends 20s */
+#define BG95_READY_NET_TIMEOUT_MS  60000  /* AT+CEREG? stat=1|5 — Quectel recommends 60s */
+
 /**
  * @brief 
  * 
@@ -53,6 +59,18 @@ typedef enum {
   BG95_RESP_ERROR_CME,
   BG95_RESP_NOT_RECEIVED,
 } bg95_resp_status_t;
+
+/**
+ * @brief Result of BG95_wait_until_ready().
+ *        Distinguishes the 3 phases so callers can pick an appropriate
+ *        recovery action (reset MCU vs sleep until next cycle).
+ */
+typedef enum {
+  BG95_READY_OK = 0,
+  BG95_READY_AT_TIMEOUT,    /* AT not answering — HW/boot broken */
+  BG95_READY_SIM_TIMEOUT,   /* SIM never reaches READY — missing or PIN-locked */
+  BG95_READY_NET_TIMEOUT,   /* CEREG never reaches stat=1|5 — poor coverage */
+} bg95_ready_t;
 
 /**
  * @brief 
@@ -110,6 +128,10 @@ typedef struct {
 void BG95_init(BG95_t *bg95, UART_HandleTypeDef *huart);
 bg95_status_t BG95_power_on(BG95_t *bg95);
 bg95_status_t BG95_power_off(BG95_t *bg95);
+bg95_ready_t BG95_wait_until_ready(BG95_t *bg95,
+                                    uint32_t at_timeout_ms,
+                                    uint32_t sim_timeout_ms,
+                                    uint32_t net_timeout_ms);
 bg95_status_t BG95_send_command(BG95_t *bg95, const char *cmd, uint16_t cmd_size);
 bg95_status_t BG95_send_raw_data(BG95_t *bg95, const uint8_t *data, uint16_t data_size);
 bool BG95_process_rx(BG95_t *bg95);
