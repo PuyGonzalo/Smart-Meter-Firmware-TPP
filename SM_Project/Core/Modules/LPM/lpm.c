@@ -5,6 +5,7 @@
 
 #include "lpm.h"
 
+#include "iwdg.h"
 #include "rtc.h"
 #include "stm32l0xx_hal.h"
 
@@ -18,6 +19,10 @@ void LPM_init(void) {
   /* Keep SWD alive during STOP so we can breakpoint code that runs after
    * wake-up. Costs ~100 uA extra in STOP — DEBUG builds only. */
   HAL_DBGMCU_EnableDBGStopMode();
+
+  /* Freeze the IWDG counter while the core is halted by the debugger; otherwise
+   * a breakpoint longer than the ~19-28 s window resets the chip mid-session. */
+  __HAL_DBGMCU_FREEZE_IWDG();
 #endif
 
   /* Ultra-low-power: shut down V_REFINT during STOP (~0.1 uA extra savings).
@@ -90,7 +95,32 @@ void LPM_sleep_until_alarm(void) {
     /* Run the pending wake handler (RTC alarm / pulse) now, which sets
      * alarm_fired, then test the loop condition. */
     __enable_irq();
-  } while (!RTC_alarm_fired());
+
+    /* If the LSE died during STOP, EXTI19 wakes us but the RTC alarm will
+     * never fire (the RTC is stalled). Break out so the main loop can run the
+     * LSI fallback instead of re-entering STOP forever. */
+  } while (!RTC_alarm_fired() && !RTC_lse_failed());
 
   RTC_clear_alarm_flag();
+}
+
+/* Worst-case IWDG window for this build (prescaler 256, reload 4095, fed by the
+ * LSI): the LSI can run as fast as ~56 kHz (DS stm32l031k6), so the timeout is
+ * as short as 256 * 4096 / 56000 ≈ 19 s (≈28 s nominal at 37 kHz). The IWDG
+ * cannot be frozen in STOP on the STM32L0 — it keeps counting on the LSI and
+ * "once running cannot be stopped" — so a sleep longer than that window would
+ * reset us mid-sleep. Split long sleeps into chunks no longer than this and
+ * refresh the watchdog at every wake. 10 s leaves comfortable margin. */
+#define LPM_IWDG_KICK_SEC  10u
+
+void LPM_sleep_seconds(uint32_t total_sec) {
+  while (total_sec > 0u) {
+    uint32_t chunk = (total_sec > LPM_IWDG_KICK_SEC) ? LPM_IWDG_KICK_SEC : total_sec;
+
+    RTC_arm_alarm(chunk);
+    LPM_sleep_until_alarm();
+    HAL_IWDG_Refresh(&hiwdg);
+
+    total_sec -= chunk;
+  }
 }

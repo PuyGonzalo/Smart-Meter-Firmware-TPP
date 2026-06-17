@@ -11,6 +11,8 @@
 #ifndef _LPM_H_
 #define _LPM_H_
 
+#include <stdint.h>
+
 /**
  * @brief One-shot configuration. Call once from main() after SystemClock_Config().
  *
@@ -31,5 +33,17 @@ void LPM_init(void);
  * Power: ~0.5 uA during STOP (LSE + RTC running).
  */
 void LPM_sleep_until_alarm(void);
+
+/**
+ * @brief Sleep in STOP mode for @p total_sec seconds, refreshing the IWDG along
+ *        the way. The sleep is split into chunks no longer than the watchdog
+ *        timeout and the dog is fed at every wake, so the IWDG (which cannot be
+ *        frozen in STOP on the STM32L0) does not reset us mid-sleep.
+ *
+ * Arms the RTC alarm internally — unlike LPM_sleep_until_alarm(), the caller
+ * must NOT arm it. Pulse-counter EXTI wake-ups are handled transparently.
+ * Returns once the full duration has elapsed.
+ */
+void LPM_sleep_seconds(uint32_t total_sec);
 
 #endif  /* _LPM_H_ */
