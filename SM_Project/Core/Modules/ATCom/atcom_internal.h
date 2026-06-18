@@ -14,7 +14,7 @@
  * DEBUG CONFIGURATION - Comment out for production values
  * ============================================================================
  */
-#define DEBUG_FAST_TIMEOUTS
+// #define DEBUG_FAST_TIMEOUTS   /* OFF: timeouts de producción para medición PPK2 */
 
 /* Debug-only: device-initiated periodic session. Remove for production. */
 #define DEBUG_SESSION_START
