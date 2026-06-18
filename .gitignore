@@ -73,3 +73,6 @@ CLAUDE.md
 # Python
 __pycache__/
 *.pyc
+
+# PPK2 measurements
+PPK2-Medicion/
