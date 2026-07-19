@@ -1,12 +1,10 @@
 /**
  * @file bg95.c
- * @author your name (you@domain.com)
- * @brief
- * @version 0.1
+ * @ingroup bg95
+ * @brief Quectel BG95 modem driver implementation: power sequencing, readiness
+ *        check, UART/DMA transmit/receive and response cleanup.
+ * @version 0.2
  * @date 2025-10-24
- *
- * @copyright Copyright (c) 2025
- *
  */
 
 #include "bg95.h"
@@ -46,14 +44,13 @@ static void _BG95_set_last_response(BG95_t *bg95, uint16_t size);
 /* -------------------------------- Callbacks ------------------------------- */
 
 /**
- * @brief
- *
- * @param bg95
- * @param huart
- * @param rx_size
+ * @brief UART RX-complete callback: stores the received size and updates the
+ *        response/data-mode flags.
+ * @param bg95    Device instance.
+ * @param rx_size Number of bytes received.
  */
 void BG95_rxcplt_callback(BG95_t *bg95, uint16_t rx_size) {
-  if (rx_size == 0) {  // Si esto se da, hubo algun error.
+  if (rx_size == 0) {  // If this happens, some error occurred.
     bg95->responseReady = false;
     return;
   }
@@ -213,7 +210,11 @@ bg95_status_t BG95_power_off(BG95_t *bg95) {
  * @brief Internal helper: send an AT command and wait until the response
  *        contains "needle". Polls every poll_interval_ms.
  *
+ * @param bg95                Device instance.
+ * @param cmd                 AT command string to send.
+ * @param needle              Substring to wait for in the response.
  * @param overall_timeout_ms  Total time before giving up.
+ * @param poll_interval_ms    Delay between polls.
  * @return true if needle was found, false on timeout.
  */
 static bool _poll_for_response(BG95_t *bg95, const char *cmd,
@@ -585,19 +586,15 @@ static bg95_status_t _BG95_process_data(BG95_t *bg95) {
 }
 
 /**
- * @brief Set the last response message (cleaned) and count its
- * fields.<br><br>
+ * @brief Store the cleaned last response and count its fields.
  *
- * Removes:<br>
- * - Leading \r\n<br>
- * - Final <code>\r\nOK\r\n</code>, <code>\r\nERROR\r\n</code> or
- * <code>\r\n</code> (for CME errors)<br><br>Also counts number of fields
- * (<code>\r\n</code> separated lines).
+ * Strips the leading CR/LF and the trailing "OK", "ERROR" or (for CME errors)
+ * CR/LF terminator, then counts the number of CR/LF-separated fields.
  *
- * @warning Only used this function with an OK response.
+ * @warning Use this function only with an OK response.
  *
- * @param bg95 Pointer to BG95 instance
- * @param size Size of received data in rxBuffer
+ * @param bg95 Pointer to the BG95 instance.
+ * @param size Size of the received data in rxBuffer.
  */
 static void _BG95_set_last_response(BG95_t *bg95, uint16_t size) {
   if (bg95 == NULL || size == 0) return;

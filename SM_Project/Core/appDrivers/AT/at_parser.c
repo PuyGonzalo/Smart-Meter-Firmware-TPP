@@ -1,12 +1,10 @@
 /**
  * @file at_parser.c
- * @author your name (you@domain.com)
- * @brief
- * @version 0.1
+ * @ingroup atcore
+ * @brief Envelope build/parse, AT command-string building and response
+ *        field helpers (implementation).
+ * @version 0.2
  * @date 2025-10-28
- *
- * @copyright Copyright (c) 2025
- *
  */
 
 #include "at_parser.h"
@@ -128,11 +126,12 @@ const uint8_t *Parser_fBuild_Envelope_w_payload(const envelope_t *envp,
 }
 
 /**
- * @brief
- *
- * @param envp
- * @retval true
- * @retval false
+ * @brief Parse an envelope header (no payload) from a raw buffer.
+ * @param envp      Raw envelope bytes.
+ * @param envp_size Buffer size.
+ * @param envp_info Output: parsed envelope fields.
+ * @retval true  Parsed successfully.
+ * @retval false NULL argument.
  */
 bool Parser_fParse_Envelope(char *envp, uint16_t envp_size,
                             envelope_t *envp_info) {
@@ -318,7 +317,7 @@ uint32_t Parser_calculate_cmd_size(const char *cmd_string,
 }
 
 /**
- * @brief Get pointer and length of field N from a str with '\r\n' delimitter.
+ * @brief Get pointer and length of field N from a CR/LF-delimited string.
  *
  * @param str Input string (ended with '\0').
  * @param field_index Index of wanted field (0 = first field).
@@ -362,10 +361,10 @@ char *Parser_get_str_field(char *str, uint16_t field_index,
 }
 
 /**
- * @brief
- *
- * @param resp
- * @return int16_t
+ * @brief Convert a byte array to an uppercase hex string (NUL-terminated).
+ * @param data    Input bytes.
+ * @param len     Number of bytes.
+ * @param hex_out Output buffer (must hold 2*len + 1 chars).
  */
 void Parser_bytes_to_hex(const uint8_t *data, uint16_t len, char *hex_out) {
   _bytes_to_hexstr(data, len, hex_out);
@@ -390,7 +389,7 @@ int16_t Parser_get_first_qird_value(const char *resp) {
 
 /* ------------------ Build AT Commands Function definition ----------------- */
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -407,7 +406,7 @@ void fCmdBuild_NoParams(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -424,7 +423,7 @@ void fCmdBuild_ATQICSGP(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -460,7 +459,7 @@ void fCmdBuild_ATQIACT(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -490,7 +489,7 @@ void fCmdBuild_ATQIDEACT(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -537,7 +536,7 @@ void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -570,7 +569,7 @@ void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -610,7 +609,7 @@ void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -635,7 +634,7 @@ void fCmdBuild_ATQISEND(atcmd_desc_t *atcmd_desc) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param cmd
@@ -679,7 +678,7 @@ void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc) {
 
 /* ---------------------- Private functions definition ---------------------- */
 
-/**
+/*
  * @brief
  *
  * @param src
@@ -694,7 +693,7 @@ static void _bytes_to_hexstr(const uint8_t *src, uint16_t len, char *dst) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param str

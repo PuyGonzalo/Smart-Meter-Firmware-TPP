@@ -1,12 +1,9 @@
 /**
  * @file delay.c
- * @author your name (you@domain.com)
- * @brief
- * @version 0.1
+ * @ingroup platform
+ * @brief Lightweight non-blocking software timers (implementation).
+ * @version 0.2
  * @date 2025-10-24
- *
- * @copyright Copyright (c) 2025
- *
  */
 
 #include "delay.h"

@@ -1,6 +1,7 @@
 /**
  * @file atcom_registration.c
- * @brief FSM de registro inicial contra el HES.
+ * @ingroup atcom_registration
+ * @brief Initial registration FSM against the HES.
  */
 
 #include "atcom_registration.h"
@@ -91,9 +92,8 @@ static void handle_failure(void) {
 }
 
 /**
- * @brief Run device registration to completion (blocking)
- * @param timeout_ms Maximum time to wait for registration
- * @return true if registration successful, false if failed
+ * @brief Run device registration to completion (blocking).
+ * @return true if registration successful, false if failed.
  */
 bool Com_register_device_blocking(uint32_t timeout_ms) {
   uint32_t start_time = HAL_GetTick();

@@ -1,5 +1,6 @@
 /**
  * @file storage.c
+ * @ingroup storage
  * @brief Persistent storage using STM32L031 internal Data EEPROM (1 KB)
  *
  * Memory map:

@@ -44,6 +44,11 @@ void MX_RTC_Init(void);
 /* USER CODE BEGIN Prototypes */
 
 /**
+ * @addtogroup platform
+ * @{
+ */
+
+/**
  * @brief  Get current RTC time as a 64-bit UNIX timestamp (seconds since
  *         1970-01-01 00:00:00 UTC), split into two 32-bit halves matching
  *         the envelope format.
@@ -93,6 +98,8 @@ bool RTC_lse_failed(void);
  *         backup domain (loses calendar + BKP_DR0) and re-inits the RTC.
  */
 void RTC_switch_to_lsi(void);
+
+/** @} */
 
 /* USER CODE END Prototypes */
 

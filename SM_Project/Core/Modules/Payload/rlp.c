@@ -1,5 +1,6 @@
 /**
  * @file rlp.c
+ * @ingroup payload
  * @author Gonzalo Puy (gpuy@fi.uba.ar)
  * @brief RLP (Recursive Length Prefix) encoder/decoder implementation.
  * @version 0.1

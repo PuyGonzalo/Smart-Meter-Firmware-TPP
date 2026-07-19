@@ -1,5 +1,6 @@
 /**
  * @file atcom_udp.c
+ * @ingroup atcom_udp
  * @brief UDP context FSM — PDP activation (AT+QIACT) + socket open (AT+QIOPEN).
  */
 

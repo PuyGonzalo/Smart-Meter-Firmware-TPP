@@ -1,5 +1,6 @@
 /**
  * @file lpm.h
+ * @ingroup lpm
  * @brief Low-Power Mode helpers — STM32L0 STOP mode with RTC alarm wake-up.
  *
  * Wraps the entry/exit dance: SysTick suspend, STOP mode entry with low-power
@@ -12,6 +13,11 @@
 #define _LPM_H_
 
 #include <stdint.h>
+
+/**
+ * @addtogroup lpm
+ * @{
+ */
 
 /**
  * @brief One-shot configuration. Call once from main() after SystemClock_Config().
@@ -45,5 +51,7 @@ void LPM_sleep_until_alarm(void);
  * Returns once the full duration has elapsed.
  */
 void LPM_sleep_seconds(uint32_t total_sec);
+
+/** @} */
 
 #endif  /* _LPM_H_ */

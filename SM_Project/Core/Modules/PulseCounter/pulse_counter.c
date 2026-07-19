@@ -1,8 +1,9 @@
 /**
  * @file pulse_counter.c
+ * @ingroup pulsecounter
  * @brief Pulse counter implementation.
  *        Increments a volatile counter on each EXTI rising edge from the
- *        water meter reed switch (PA8).
+ *        water-meter pulse input (PA8), with RTC-based debouncing.
  */
 
 #include "pulse_counter.h"

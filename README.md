@@ -70,6 +70,24 @@ Con la placa conectada vía ST-LINK, ir a **Run and Debug** (`Ctrl+Shift+D`), el
 
 ---
 
+## Documentación (Doxygen)
+
+La documentación del firmware se genera con [Doxygen](https://www.doxygen.nl) a partir de los comentarios del código y vive en `Doc/`. La documentación del código está **en inglés**. Usa el tema [doxygen-awesome-css](https://github.com/jothepro/doxygen-awesome-css), ya incluido en el repo (no hace falta instalarlo).
+
+**Requisitos:**
+- Doxygen ≥ 1.9.5
+- Graphviz (`dot`) — para los grafos de llamadas y colaboración
+
+**Generar:**
+```bash
+cd Doc
+doxygen Doxyfile
+```
+
+Abrir `Doc/html/index.html` en el navegador. La página principal (resumen, arquitectura y máquinas de estado) está definida en `Doc/mainpage.dox`.
+
+---
+
 ## Estructura del repo
 
 ```

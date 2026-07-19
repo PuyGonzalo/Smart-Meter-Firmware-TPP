@@ -1,7 +1,9 @@
 /**
  * @file atcom_internal.h
- * @brief Defines y helpers compartidos entre los sub-modulos de ATCom.
- *        No incluir desde codigo de aplicacion: solo desde atcom_*.c.
+ * @ingroup atcom
+ * @brief Shared defines and helpers used across the ATCom sub-modules
+ *        (message types, status flags, OBIS codes and per-command timeouts).
+ *        Do not include from application code — only from atcom_*.c.
  */
 
 #ifndef _ATCOM_INTERNAL_H_
@@ -14,7 +16,7 @@
  * DEBUG CONFIGURATION - Comment out for production values
  * ============================================================================
  */
-// #define DEBUG_FAST_TIMEOUTS   /* OFF: timeouts de producción para medición PPK2 */
+// #define DEBUG_FAST_TIMEOUTS   /* OFF: production timeouts for PPK2 measurement */
 
 /* Debug-only: device-initiated periodic session. Remove for production. */
 #define DEBUG_SESSION_START
@@ -23,7 +25,7 @@
 #define RESTART_DELAY_BASE_MS    200
 #define RESTART_DELAY_MAX_MS     3000
 #define GENERIC_RETRY_DELAY_MS   500
-#define MAX_FAILURES_HARD_RESET  20   /* ~3 min total before hard reset (asume ~5s state timeout + backoff cap 3s por ciclo) */
+#define MAX_FAILURES_HARD_RESET  20   /* ~3 min total before hard reset (assumes ~5s state timeout + backoff cap 3s per cycle) */
 #else
 #define RESTART_DELAY_BASE_MS    1000
 #define RESTART_DELAY_MAX_MS     5000  /* cap at 5s so 5 failures fit in <120s global timeout */
@@ -49,7 +51,7 @@
 #define MSG_TYPE_SESSION_START_REQUEST  0xF0
 #endif
 
-/* Status flags reutilizados como respuesta en HANDSHAKE_RESPONSE,
+/* Status flags reused as the response in HANDSHAKE_RESPONSE,
  * REGISTER_RESPONSE, etc. Spec: Body/07B-estructura-de-mensajes.tex */
 #define MSG_STATUS_OK                 0x00
 #define MSG_STATUS_ERR_INVALID_KEY    0x01

@@ -1,3 +1,10 @@
+/**
+ * @file bg95_at_cmd_lib.h
+ * @ingroup bg95
+ * @brief BG95 AT command identifiers (LUT indices), command-size hints and the
+ *        canonical modem response strings.
+ */
+
 #ifndef _BG95_AT_CMD_LIB_H_
 #define _BG95_AT_CMD_LIB_H_
 
@@ -26,6 +33,7 @@
                   * timeout value                                           \
                   */
 
+/** @brief AT command identifiers used as indices into the BG95 command LUT. */
 enum {
   /* standard commands */
   CMD_AT = 0, /* empty command or empty answer */

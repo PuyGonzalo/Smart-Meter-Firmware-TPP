@@ -51,7 +51,7 @@
 /* Uncomment to wipe EEPROM on boot (forces re-registration) */
 #define DEBUG_ERASE_EEPROM
 
-/* Tests — descomentar UNO a la vez (o ninguno para flujo normal) */
+/* Tests — uncomment ONE at a time (or none for the normal flow) */
 // #define TEST_PWRKEY_STATUS
 //#define TEST_RTC_WAKEUP
 //#define TEST_LPM_STOP
@@ -65,7 +65,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-/*Pequeña pruebita*/
+/* Delay timer handle for AT commands. */
 int32_t at_command_delay;
 extern UART_HandleTypeDef huart2;
 /* USER CODE END PV */
@@ -134,8 +134,8 @@ static bg95_ready_t modem_power_on_and_ready(void) {
 }
 
 #ifdef TEST_RTC_WAKEUP
-#define TEST_RTC_PERIOD_SEC  30   /* mas corto que SESSION_PERIOD_SEC para iterar rapido */
-#define TEST_RTC_CYCLES      5    /* cantidad de ciclos antes de trap */
+#define TEST_RTC_PERIOD_SEC  30   /* shorter than SESSION_PERIOD_SEC to iterate quickly */
+#define TEST_RTC_CYCLES      5    /* number of cycles before trapping */
 
 static void run_rtc_wakeup_test(void) {
   printf("\r\n=== RTC WAKEUP TEST ===\r\n");
@@ -152,7 +152,7 @@ static void run_rtc_wakeup_test(void) {
     printf("  [t=%lums] power_on=%d  STATUS=%d  (took %lums)\r\n",
            HAL_GetTick(), on_ok, read_status(), HAL_GetTick() - t0);
 
-    /* Aca iria Com_session_*() en produccion — saltado en este test */
+    /* Com_session_*() would run here in production — skipped in this test */
     HAL_Delay(2000);
 
     t0 = HAL_GetTick();
@@ -284,17 +284,17 @@ int main(void)
     PulseCounter_set_count(Storage_load_pulse_count());
   }
 
-  /*Creo delay para comandos at*/
+  /* Create the delay timer for AT commands. */
   at_command_delay = delay_timer_create();
 
 #ifdef TEST_PWRKEY_STATUS
-  run_pwrkey_status_test();  /* nunca retorna */
+  run_pwrkey_status_test();  /* never returns */
 #endif
 #ifdef TEST_RTC_WAKEUP
-  run_rtc_wakeup_test();     /* nunca retorna */
+  run_rtc_wakeup_test();     /* never returns */
 #endif
 #ifdef TEST_LPM_STOP
-  run_lpm_stop_test();       /* nunca retorna */
+  run_lpm_stop_test();       /* never returns */
 #endif
 
   /* Power on modem and wait until ready (AT alive + SIM READY + network
@@ -376,7 +376,6 @@ int main(void)
 
 /**
   * @brief System Clock Configuration
-  * @retval None
   */
 void SystemClock_Config(void)
 {
@@ -442,7 +441,6 @@ void SystemClock_Config(void)
 
 /**
   * @brief  This function is executed in case of error occurrence.
-  * @retval None
   */
 void Error_Handler(void)
 {

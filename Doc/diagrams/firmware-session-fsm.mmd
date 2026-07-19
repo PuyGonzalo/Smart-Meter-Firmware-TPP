@@ -1,0 +1,30 @@
+stateDiagram-v2
+    [*] --> UDPCtx : Wake up (RTC alarm · next_wake)
+
+    UDPCtx : UDP context<br/>(activate PDP + open socket)
+    Announce : IP announce<br/>(AT+CGPADDR → ANNOUNCE_IP<br/>if IP changed · opens NAT pinhole)
+
+    state Exchange {
+        [*] --> Waiting
+        Waiting : Wait for HES message<br/>(poll QIRD)
+        Disp : Read and dispatch<br/>by MsgType
+        Waiting --> Disp : data available
+        Disp --> Waiting : HANDSHAKE→resp (sync RTC)<br/>READ→OBIS values<br/>WRITE→next_wake + resp
+    }
+
+    UDPCtx --> Announce : socket open
+    Announce --> Exchange : IP announced
+    Disp --> Done : HES ACK
+
+    UDPCtx --> Backoff : error
+    Announce --> Backoff : error / timeout
+    Exchange --> Backoff : error / timeout
+
+    Done : Session complete<br/>(reset pulse counter · power modem off)
+    Backoff : Exponential backoff
+    Backoff --> UDPCtx : retry (increasing wait)
+    Backoff --> ResetMCU : N consecutive failures
+
+    Done --> [*]
+    ResetMCU : MCU reset
+    ResetMCU --> [*]

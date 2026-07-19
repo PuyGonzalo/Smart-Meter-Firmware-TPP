@@ -1,6 +1,7 @@
 /**
  * @file atcom_session.c
- * @brief Session FSM — periodic data exchange with HES.
+ * @ingroup atcom_session
+ * @brief Session FSM — periodic data exchange with the HES.
  */
 
 #include "atcom_session.h"
@@ -338,8 +339,8 @@ static void handle_register_response(const uint8_t *p, uint16_t len) {
 
 static void handle_handshake(const uint8_t *p, uint16_t len) {
   (void)p; (void)len;
-  /* Payload: RLP list [ status(u8) ]. Phase 7 (HMAC) aun no validada,
-   * asi que siempre MSG_STATUS_OK. */
+  /* Payload: RLP list [ status(u8) ]. Phase 7 (HMAC) not validated yet,
+   * so always MSG_STATUS_OK. */
   rlp_writer_t w;
   rlp_writer_init(&w, ses_payload_buf, sizeof(ses_payload_buf));
   uint16_t bm = rlp_list_begin(&w);

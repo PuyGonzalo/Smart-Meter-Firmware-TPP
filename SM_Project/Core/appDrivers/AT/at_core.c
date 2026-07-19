@@ -1,12 +1,10 @@
 /**
  * @file at_core.c
- * @author your name (you@domain.com)
- * @brief
- * @version 0.1
+ * @ingroup atcore
+ * @brief Generic AT command framework (ATCore) implementation: command LUT,
+ *        dispatch to the BG95 driver and response accessors.
+ * @version 0.2
  * @date 2025-10-24
- *
- * @copyright Copyright (c) 2025
- *
  */
 
 #include "at_core.h"
@@ -26,14 +24,14 @@ static at_context_t at_core;
 
 /* -------------------------- Device specific BEGIN ------------------------- */
 
-/**
+/*
  * @brief
  *
  */
 extern const bg95_driver_t BG95_Driver;
 static BG95_t bg95_device;
 
-/**
+/*
  * @brief
  *
  */
@@ -102,7 +100,7 @@ static const BG95_at_LUT_t ATCMD_BG95_LUT[] = {
 
 /* -------------------------------- Callbacks ------------------------------- */
 
-/**
+/*
  * @brief
  *
  * @param huart
@@ -116,11 +114,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 
 /* ----------------------- Public functions definition ---------------------- */
 
-/**
- * @brief
- *
- * @param huart
- */
 void ATCore_init(UART_HandleTypeDef *huart) {
   memset(&bg95_device, 0, sizeof(bg95_device));
   at_core.device = &bg95_device;
@@ -130,13 +123,13 @@ void ATCore_init(UART_HandleTypeDef *huart) {
   AT_DRV->init(AT_DEVICE, huart);
 }
 
-/**
+/*
  * @brief
  *
  */
 void ATCore_config() {}
 
-/**
+/*
  * @brief Power on the modem (enables level shifter and pulses PWRKEY).
  *
  * @return true if modem is ready, false on timeout.
@@ -145,7 +138,7 @@ bool ATCore_power_on(void) {
   return BG95_power_on(AT_DEVICE) == BG95_OK;
 }
 
-/**
+/*
  * @brief Power off the modem (AT+QPOWD and disables level shifter).
  *
  * @return true on graceful power-down, false on timeout.
@@ -154,7 +147,7 @@ bool ATCore_power_off(void) {
   return BG95_power_off(AT_DEVICE) == BG95_OK;
 }
 
-/**
+/*
  * @brief Wrapper over BG95_wait_until_ready(). Verifies the modem is in a
  *        usable state (AT alive + SIM READY + network attached) before
  *        network operations. Call after ATCore_power_on().
@@ -166,18 +159,13 @@ bg95_ready_t ATCore_wait_until_ready(uint32_t at_timeout_ms,
                                 net_timeout_ms);
 }
 
-/**c
- * @brief
- *
- * @param dev_id
- */
 void ATCore_set_device_id(uint8_t *dev_id) {
   for (int i = 0; i < ENV_DEVID_BYTES; i++) {
     at_core.device_id[i] = dev_id[i];
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param dev_id
@@ -197,7 +185,7 @@ bool ATCore_compare_device_id(uint8_t *dev_id) {
   return result;
 }
 
-/**
+/*
  * @brief
  *
  * @return uint8_t*
@@ -209,7 +197,7 @@ void ATCore_get_device_id(uint8_t *dev_id_cpy) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param dev_mac
@@ -220,7 +208,7 @@ void ATCore_set_device_mac(uint8_t *dev_mac) {
   }
 }
 
-/**
+/*
  * @brief
  *
  * @param dev_mac
@@ -240,7 +228,7 @@ bool ATCore_compare_device_mac(uint8_t *dev_mac) {
   return result;
 }
 
-/**
+/*
  * @brief
  *
  * @return uint8_t*
@@ -251,13 +239,6 @@ void ATCore_get_device_mac(uint8_t *mac_cpy) {
   }
 }
 
-/**
- * @brief
- *
- * @param cmd
- * @retval true
- * @retval false
- */
 bool ATCore_send_cmd(atcmd_desc_t *cmd) {
   uint8_t ret;
   bool result;
@@ -308,7 +289,7 @@ bool ATCore_send_data(const uint8_t *data, uint16_t data_size) {
   return result;
 }
 
-/**
+/*
  * @brief
  *
  * @retval true
@@ -316,7 +297,7 @@ bool ATCore_send_data(const uint8_t *data, uint16_t data_size) {
  */
 bool ATCore_is_response_ready() { return AT_DRV->is_response_ready(AT_DEVICE); }
 
-/**
+/*
  * @brief
  *
  * @retval true
@@ -328,7 +309,7 @@ uint8_t ATCore_check_response() {
   return AT_DRV->quick_check_response(AT_DEVICE);
 }
 
-/**
+/*
  * @brief
  *
  * @retval true
@@ -336,7 +317,7 @@ uint8_t ATCore_check_response() {
  */
 bool ATCore_process_response() { return AT_DRV->process_response(AT_DEVICE); }
 
-/**
+/*
  * @brief
  *
  * @retval uint8_t Response status @see bg95_status_t
@@ -345,7 +326,7 @@ uint8_t ATCore_get_response_status() {
   return AT_DRV->get_response_status(AT_DEVICE);
 }
 
-/**
+/*
  * @brief
  *
  * @return char*
@@ -361,7 +342,7 @@ bool ATCore_get_last_response(char *copy, uint16_t copy_size,
   return true;
 }
 
-/**
+/*
  * @brief
  *
  * @param str
@@ -383,7 +364,7 @@ bool ATCore_cmp_str_in_field(const char *str, uint16_t field_index) {
   return (result != NULL);
 }
 
-/**
+/*
  * @brief
  *
  * @return int16_t
@@ -400,7 +381,7 @@ int16_t ATCore_get_first_qird_value() {
   return result;
 }
 
-/**
+/*
  * @brief
  *
  */
@@ -408,13 +389,6 @@ void ATCore_set_data_mode() { AT_DEVICE->data_mode = true; }
 
 void ATCore_reset_rx() { AT_DRV->reset_rx(AT_DEVICE); }
 
-/**
- * @brief Fetch IMEI from modem via AT+CGSN (blocking, up to 3 s).
- * @param out   Output buffer for NUL-terminated 15-digit IMEI string.
- * @param cap   Buffer capacity (must be >= 16).
- * @retval true  IMEI extracted successfully.
- * @retval false Timeout, command error, or parse failure.
- */
 bool ATCore_get_imei(char *out, uint16_t cap) {
   if (!out || cap < 16) return false;
 

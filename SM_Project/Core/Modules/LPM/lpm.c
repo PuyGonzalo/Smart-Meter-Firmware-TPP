@@ -1,5 +1,6 @@
 /**
  * @file lpm.c
+ * @ingroup lpm
  * @brief STM32L0 STOP mode implementation.
  */
 

@@ -1,0 +1,30 @@
+stateDiagram-v2
+    [*] --> Registration : Device not registered
+
+    state Registration {
+        [*] --> UDPCtx
+        UDPCtx : UDP context<br/>(activate PDP + open socket)
+        IP : Get IPv6<br/>(AT+CGPADDR)
+        Send : Send REGISTER_REQUEST<br/>(IMEI + IPv6 · QISENDEX)
+        Wait : Wait for REGISTER_RESPONSE<br/>(poll QIRD · re-poll / resend if no data)
+        Proc : Process response<br/>(sync RTC · store<br/>credentials and next_wake)
+        Ack : Send ACK<br/>and drain HES confirmation
+
+        UDPCtx --> IP : socket open
+        IP --> Send : IPv6 obtained
+        Send --> Wait : SEND OK
+        Wait --> Proc : REGISTER_RESPONSE
+        Proc --> Ack : flag = OK
+    }
+
+    Ack --> Registered : ACK sent
+    Registration --> Backoff : error / timeout
+
+    Backoff : Exponential backoff
+    Backoff --> Registration : retry (increasing wait)
+    Backoff --> ResetMCU : N consecutive failures
+
+    Registered : Registered<br/>(credentials in EEPROM)
+    Registered --> [*]
+    ResetMCU : MCU reset
+    ResetMCU --> [*]

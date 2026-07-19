@@ -1,13 +1,17 @@
 /**
  * @file at_parser.h
- * @author your name (you@domain.com)
- * @brief 
- * @version 0.1
+ * @ingroup atcore
+ * @brief Envelope build/parse, AT command-string building and response
+ *        field helpers.
+ *
+ * Handles both directions of the wire format: serializing/deserializing the
+ * 46-byte envelope (optionally with an RLP payload) and formatting AT command
+ * strings from an ::atcmd_desc_t. See at_parser.c for the per-function
+ * documentation.
+ *
+ * @version 0.2
  * @date 2025-10-28
- * 
- * @copyright Copyright (c) 2025
- * 
-*/
+ */
 
 #ifndef _AT_PARSER_H_
 #define _AT_PARSER_H_
@@ -24,6 +28,12 @@
 #include "at_device.h"
 #include "at_net.h"
 
+/**
+ * @addtogroup atcore
+ * @{
+ */
+
+/* Envelope field offsets and sizes (bytes). */
 #define ENV_VERSION_OFFSET 0
 #define ENV_VERSION_BYTES 1
 #define ENV_MSGTYPE_OFFSET 1
@@ -59,21 +69,23 @@ void Parser_bytes_to_hex(const uint8_t *data, uint16_t len, char *hex_out);
 
 /* ----------------- Build AT Commands Function declaration ----------------- */
 /**
-* @addtogroup ATCommandBuilders
-* @brief AT Commands builder functions.
-* @{
-*/
-void fCmdBuild_NoParams(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQIACT(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQIDEACT(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQISEND(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc);
-void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc);
+ * @defgroup atcmd_builders AT command builders
+ * @ingroup atcore
+ * @brief Per-command functions that fill an ::atcmd_desc_t before it is sent.
+ *        Each builder formats the parameters specific to its AT command.
+ * @{
+ */
+void fCmdBuild_NoParams(atcmd_desc_t *atcmd_desc);   /**< Commands with no parameters. */
+void fCmdBuild_ATQIACT(atcmd_desc_t *atcmd_desc);    /**< AT+QIACT (activate PDP). */
+void fCmdBuild_ATQIDEACT(atcmd_desc_t *atcmd_desc);  /**< AT+QIDEACT (deactivate PDP). */
+void fCmdBuild_ATQIOPEN(atcmd_desc_t *atcmd_desc);   /**< AT+QIOPEN (open socket). */
+void fCmdBuild_ATQICLOSE(atcmd_desc_t *atcmd_desc);  /**< AT+QICLOSE (close socket). */
+void fCmdBuild_ATQISTATE(atcmd_desc_t *atcmd_desc);  /**< AT+QISTATE (socket state). */
+void fCmdBuild_ATQISEND(atcmd_desc_t *atcmd_desc);   /**< AT+QISEND (send data). */
+void fCmdBuild_ATQISENDEX(atcmd_desc_t *atcmd_desc); /**< AT+QISENDEX (send hex data). */
+void fCmdBuild_ATQIRD(atcmd_desc_t *atcmd_desc);     /**< AT+QIRD (read received data). */
 /** @} */
 
-
+/** @} */
 
 #endif //_AT_PARSER_H_

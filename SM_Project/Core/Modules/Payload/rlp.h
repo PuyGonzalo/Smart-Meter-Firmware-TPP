@@ -1,5 +1,6 @@
 /**
  * @file rlp.h
+ * @ingroup payload
  * @author Gonzalo Puy (gpuy@fi.uba.ar)
  * @brief RLP (Recursive Length Prefix) encoder/decoder for protocol payloads.
  *
@@ -27,11 +28,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Max bytes reserved for a list header (covers content up to 65535 bytes) */
+/**
+ * @addtogroup payload
+ * @{
+ */
+
+/** Max bytes reserved for a list header (covers content up to 65535 bytes). */
 #define RLP_LIST_HEADER_RESERVE 3
 
 /* ========================== Writer (encoder) ============================= */
 
+/** @brief RLP encoder state over a caller-provided output buffer. */
 typedef struct {
     uint8_t *buf;       /**< Output buffer */
     uint16_t cap;       /**< Buffer capacity */
@@ -96,6 +103,7 @@ void rlp_list_end(rlp_writer_t *w, uint16_t bookmark);
 
 /* ========================== Reader (decoder) ============================= */
 
+/** @brief RLP decoder state over an input buffer. */
 typedef struct {
     const uint8_t *buf; /**< Input buffer */
     uint16_t len;       /**< Buffer length */
@@ -130,6 +138,7 @@ bool rlp_decode_uint64(rlp_reader_t *r, uint64_t *out);
 
 /**
  * @brief Decode next item as a NUL-terminated string.
+ * @param r       Reader context.
  * @param out     Output buffer (must have room for string + NUL)
  * @param out_cap Capacity of output buffer
  * @param out_len If non-NULL, receives the string length (excluding NUL)
@@ -139,6 +148,7 @@ bool rlp_decode_string(rlp_reader_t *r, char *out, uint16_t out_cap,
 
 /**
  * @brief Decode next item as raw bytes.
+ * @param r       Reader context.
  * @param out     Output buffer
  * @param out_cap Capacity of output buffer
  * @param out_len If non-NULL, receives the number of bytes decoded
@@ -156,5 +166,7 @@ bool rlp_decode_bytes(rlp_reader_t *r, uint8_t *out, uint16_t out_cap,
  * @param list_reader  Sub-reader initialized to the list content
  */
 bool rlp_enter_list(rlp_reader_t *r, rlp_reader_t *list_reader);
+
+/** @} */
 
 #endif /* _RLP_H_ */

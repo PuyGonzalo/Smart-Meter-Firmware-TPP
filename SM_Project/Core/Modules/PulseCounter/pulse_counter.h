@@ -1,7 +1,8 @@
 /**
  * @file pulse_counter.h
- * @brief Pulse counter module for water meter reed switch input.
- *        Counts rising-edge interrupts on PULSE_INPUT_Pin (PA8).
+ * @ingroup pulsecounter
+ * @brief Pulse counter module for the water-meter pulse input on PA8.
+ *        Counts rising-edge interrupts and converts them to a volume.
  */
 
 #ifndef PULSE_COUNTER_H
@@ -9,6 +10,12 @@
 
 #include <stdint.h>
 
+/**
+ * @addtogroup pulsecounter
+ * @{
+ */
+
+/** Volume of water, in liters, represented by a single meter pulse. */
 #define LITERS_PER_PULSE 100
 
 /**
@@ -40,5 +47,7 @@ void PulseCounter_set_count(uint32_t count);
  *         Do NOT call this directly — it is invoked by the ISR path.
  */
 void PulseCounter_irq_handler(void);
+
+/** @} */
 
 #endif /* PULSE_COUNTER_H */

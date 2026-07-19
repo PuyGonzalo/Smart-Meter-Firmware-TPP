@@ -1,9 +1,10 @@
 /**
  * @file ATCom.c
+ * @ingroup atcom
  * @author Gonzalo Puy (gpuy@fi.uba.ar)
- * @brief Glue de inicializacion y storage compartido entre los sub-modulos
- *        de ATCom. La logica real vive en atcom_udp.c, atcom_registration.c
- *        y atcom_session.c.
+ * @brief Initialization glue and shared storage across the ATCom sub-modules.
+ *        The actual logic lives in atcom_udp.c, atcom_registration.c and
+ *        atcom_session.c.
  *
  * @version 0.2
  * @date 2026-05-14
@@ -14,8 +15,8 @@
 #include "atcom_internal.h"
 #include "atcom_udp.h"
 
-/* Seconds until next wake-up as dictated by HES. 0 means "no pending value".
- * Escrito por registration y session, leido por main loop. */
+/* Seconds until next wake-up as dictated by the HES. 0 means "no pending value".
+ * Written by registration and session, read by the main loop. */
 static uint32_t pending_wake_seconds = 0;
 
 void Com_Init(void) {

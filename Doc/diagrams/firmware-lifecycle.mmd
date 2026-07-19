@@ -1,0 +1,19 @@
+stateDiagram-v2
+    [*] --> Init : Reset / Power-on
+
+    Init : Initialization<br/>(clocks, peripherals, modules,<br/>load credentials from EEPROM)
+    Reg : Initial registration<br/>(registration FSM)
+    Ses : Periodic session with the HES<br/>(power modem on · session FSM · power modem off)
+    Sleep : Sleep — STOP mode<br/>(only RTC and pulse sensor active)
+    Pulse : Pulse count<br/>(EXTI ISR on PA8)
+
+    Init --> Reg : Device not registered
+    Init --> Sleep : Already registered
+
+    Reg --> Sleep : Registration OK<br/>(sleep until next_wake)
+
+    Sleep --> Ses : RTC alarm (next_wake)
+    Sleep --> Pulse : Pulse on PA8
+    Pulse --> Sleep : increment counter<br/>and return to STOP
+
+    Ses --> Sleep : HES ACK (session complete)<br/>or retries exhausted

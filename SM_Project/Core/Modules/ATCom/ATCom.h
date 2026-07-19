@@ -1,11 +1,12 @@
 /**
  * @file ATCom.h
+ * @ingroup atcom
  * @author Gonzalo Puy (gpuy@fi.uba.ar)
- * @brief API publica del modulo ATCom — orquesta registro y sesiones
- *        periodicas contra el HES via BG95.
+ * @brief Public API of the ATCom module — orchestrates registration and
+ *        periodic sessions against the HES through the BG95 modem.
  *
- * Los detalles de las FSM internas (registration / UDP / session) viven en
- * atcom_registration.h, atcom_udp.h y atcom_session.h respectivamente.
+ * The internal FSMs (registration / UDP / session) live in
+ * atcom_registration.h, atcom_udp.h and atcom_session.h respectively.
  *
  * @version 0.2
  * @date 2026-05-14
@@ -17,20 +18,27 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "at_core.h"  /* re-export para mantener transitive includes en main.c */
+#include "at_core.h"  /* re-exported to keep transitive includes in main.c */
 #include "atcom_registration.h"
 #include "atcom_session.h"
 
 /**
- * @brief Inicializa los timers internos de las tres FSM (registration,
- *        UDP context y session). Llamar una vez en boot.
+ * @addtogroup atcom
+ * @{
+ */
+
+/**
+ * @brief Initialize the internal timers of the three FSMs (registration,
+ *        UDP context and session). Call once at boot.
  */
 void Com_Init(void);
 
 /**
- * @brief Pop the wake-up delay (seconds) requested by HES, then clear it.
- * @return Delay in seconds, or 0 if HES has not provided a value.
+ * @brief Pop the wake-up delay (seconds) requested by the HES, then clear it.
+ * @return Delay in seconds, or 0 if the HES has not provided a value.
  */
 uint32_t Com_pop_pending_wake_seconds(void);
+
+/** @} */
 
 #endif /* _ATCOM_H_ */
