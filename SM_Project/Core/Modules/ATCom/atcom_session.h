@@ -64,6 +64,9 @@ typedef struct {
   uint32_t last_seq;               /**< seq used in the last sent envelope (resend). */
   uint32_t poll_start_tick_ms;     /**< HAL_GetTick() when polling started (resend guard). */
   bool can_resend;                 /**< True only after at least one envelope was sent. */
+  bool awaiting_register_ack;      /**< Our ACK to a REGISTER_RESPONSE awaits the HES confirmation ACK. */
+  bool listening;                  /**< Listening for the HES (the no-contact window is running). */
+  uint32_t last_activity_ms;       /**< HAL_GetTick() of the last HES message (or of the start of listening). */
 } session_fsm_t;
 
 /** @brief Create the FSM timers. Called from Com_Init(). */
@@ -77,7 +80,9 @@ void Com_session_process(void);
 
 /**
  * @brief Whether the session has finished — either successfully or failed.
- *        Use Com_session_failed() to tell which.
+ *        Use Com_session_failed() to tell which. A session in which the HES
+ *        never made contact within SESSION_LISTEN_WINDOW_MS also finishes
+ *        (not as failed), keeping the pulse count for the next session.
  * @retval true  Session is done or in error state.
  */
 bool Com_is_session_done(void);

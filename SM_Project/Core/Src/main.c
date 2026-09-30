@@ -49,7 +49,7 @@
 #define SESSION_PERIOD_SEC       60      /* Interval between HES sessions */
 
 /* Uncomment to wipe EEPROM on boot (forces re-registration) */
-#define DEBUG_ERASE_EEPROM
+// #define DEBUG_ERASE_EEPROM
 
 /* Tests — uncomment ONE at a time (or none for the normal flow) */
 // #define TEST_PWRKEY_STATUS
@@ -131,6 +131,24 @@ static bg95_ready_t modem_power_on_and_ready(void) {
   return ATCore_wait_until_ready(BG95_READY_AT_TIMEOUT_MS,
                                   BG95_READY_SIM_TIMEOUT_MS,
                                   BG95_READY_NET_TIMEOUT_MS);
+}
+
+/**
+ * @brief Bring the modem up, sleeping one cycle at a time while there is no
+ *        network coverage. Hardware or SIM failures reset the MCU.
+ *
+ * Used at boot as well as before every session: a device installed where
+ * there is no coverage must sleep and retry, not loop through resets with
+ * the modem powered.
+ */
+static void modem_up_or_sleep(void) {
+  while (1) {
+    bg95_ready_t r = modem_power_on_and_ready();
+    if (r == BG95_READY_OK) return;
+    if (r != BG95_READY_NET_TIMEOUT) NVIC_SystemReset();
+    ATCore_power_off();
+    LPM_sleep_seconds(SESSION_PERIOD_SEC);
+  }
 }
 
 #ifdef TEST_RTC_WAKEUP
@@ -298,11 +316,9 @@ int main(void)
 #endif
 
   /* Power on modem and wait until ready (AT alive + SIM READY + network
-   * attached). Any failure here means the device cannot proceed — reset
-   * the MCU and try a clean boot. */
-  if (modem_power_on_and_ready() != BG95_READY_OK) {
-    NVIC_SystemReset();
-  }
+   * attached). Without coverage, sleep and retry; AT or SIM failures reset
+   * the MCU for a clean boot. */
+  modem_up_or_sleep();
 
   /* Fetch and persist IMEI on first boot (modem must be on) */
   if (!Storage_has_imei()) {
@@ -324,9 +340,7 @@ int main(void)
   if (initial_wake > 0) {
     ATCore_power_off();
     LPM_sleep_seconds(initial_wake);
-    if (modem_power_on_and_ready() != BG95_READY_OK) {
-      NVIC_SystemReset();
-    }
+    modem_up_or_sleep();
   }
   /* USER CODE END 2 */
 
@@ -344,13 +358,7 @@ int main(void)
      * If there is no coverage, sleep one cycle and retry — do not hard
      * reset for a transient signal issue. Hardware faults (AT/SIM) DO
      * trigger reset. */
-    while (1) {
-      bg95_ready_t r = modem_power_on_and_ready();
-      if (r == BG95_READY_OK) break;
-      if (r != BG95_READY_NET_TIMEOUT) NVIC_SystemReset();
-      ATCore_power_off();
-      LPM_sleep_seconds(SESSION_PERIOD_SEC);
-    }
+    modem_up_or_sleep();
 
     Com_session_start();
     while (!Com_is_session_done()) {
@@ -447,7 +455,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   NVIC_SystemReset();
-  /* USER CODE END Error_Handler_Debug */
+   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT
 /**

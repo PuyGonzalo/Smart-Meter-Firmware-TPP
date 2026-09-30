@@ -26,11 +26,16 @@
 #define RESTART_DELAY_MAX_MS     3000
 #define GENERIC_RETRY_DELAY_MS   500
 #define MAX_FAILURES_HARD_RESET  20   /* ~3 min total before hard reset (assumes ~5s state timeout + backoff cap 3s per cycle) */
+#define SESSION_LISTEN_WINDOW_MS 30000U
 #else
 #define RESTART_DELAY_BASE_MS    1000
 #define RESTART_DELAY_MAX_MS     5000  /* cap at 5s so 5 failures fit in <120s global timeout */
 #define GENERIC_RETRY_DELAY_MS   10000
 #define MAX_FAILURES_HARD_RESET  5    /* ~61s total before hard reset */
+/* Max time without any HES message while listening. Covers the HES retry
+ * schedule (5 attempts, 30 s response timeout + 60 s between attempts, ~6.5
+ * min) plus the COLD_START_OFFSET_SEC head start. */
+#define SESSION_LISTEN_WINDOW_MS 420000U
 #endif
 
 /* Message types (IEC 62056 / protocol spec) */

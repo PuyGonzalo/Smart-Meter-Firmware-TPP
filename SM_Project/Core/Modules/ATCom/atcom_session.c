@@ -33,7 +33,10 @@ static session_fsm_t session = {.current_state = COM_SES_IDLE,
                                 .last_msg_type = 0,
                                 .last_payload_len = 0,
                                 .poll_start_tick_ms = 0,
-                                .can_resend = false};
+                                .can_resend = false,
+                                .awaiting_register_ack = false,
+                                .listening = false,
+                                .last_activity_ms = 0};
 
 /* Buffer for session payload building */
 static uint8_t ses_payload_buf[96];
@@ -44,6 +47,11 @@ static char ses_ipv6[48] = {0};
 
 /* Last IPv6 successfully announced to HES — persists across sessions in RAM */
 static char last_announced_ipv6[48] = {0};
+
+/* Pulse count included in the last READ_RESPONSE of this session. The final
+ * ACK subtracts exactly this amount, so pulses counted after the report are
+ * kept for the next session instead of being cleared. */
+static uint32_t ses_reported_pulses = 0;
 
 /* Private function prototypes */
 static void session_handle_failure(void);
@@ -72,6 +80,11 @@ static void session_handle_failure(void) {
   atcom_udp_reset();
 
   ATCore_reset_rx();
+
+  /* After the restart the no-contact window starts over, and a pending
+   * IP-update confirmation no longer applies. */
+  session.listening = false;
+  session.awaiting_register_ack = false;
 
   session.failure_count++;
 
@@ -177,7 +190,7 @@ static uint16_t session_build_read_response(const uint8_t *req_payload,
     if (!rlp_decode_string(&list_r, code, sizeof(code), &code_len)) return 0;
 
     if (strcmp(code, OBIS_WATER_VOLUME) == 0) {
-      uint64_t v = (uint64_t)PulseCounter_get_volume_liters();
+      uint64_t v = (uint64_t)ses_reported_pulses * LITERS_PER_PULSE;
       uint8_t be[8];
       for (int i = 0; i < 8; i++) be[i] = (uint8_t)(v >> (56 - i * 8));
       session_append_obis_value(&w, code, be, sizeof(be));
@@ -294,6 +307,10 @@ void Com_session_start(void) {
   session.last_payload_len = 0;
   session.poll_start_tick_ms = 0;
   session.can_resend = false;
+  session.awaiting_register_ack = false;
+  session.listening = false;
+  session.last_activity_ms = 0;
+  ses_reported_pulses = 0;
 
   atcom_udp_reset();
 }
@@ -334,11 +351,15 @@ typedef void (*msg_handler_t)(const uint8_t *, uint16_t);
 
 static void handle_register_response(const uint8_t *p, uint16_t len) {
   (void)p; (void)len;
+  /* The HES answers our ACK with its own (double handshake): that ACK
+   * confirms the IP update and must not be taken as the end of the session. */
+  session.awaiting_register_ack = true;
   session_send_and_wait(MSG_TYPE_ACK, NULL, 0, COM_SES_POLL_WAIT);
 }
 
 static void handle_handshake(const uint8_t *p, uint16_t len) {
   (void)p; (void)len;
+  session.awaiting_register_ack = false;
   /* Payload: RLP list [ status(u8) ]. Phase 7 (HMAC) not validated yet,
    * so always MSG_STATUS_OK. */
   rlp_writer_t w;
@@ -356,7 +377,8 @@ static void handle_handshake(const uint8_t *p, uint16_t len) {
 }
 
 static void handle_read_request(const uint8_t *payload_ptr, uint16_t payload_len) {
-  Storage_save_pulse_count(PulseCounter_get_count());
+  ses_reported_pulses = PulseCounter_get_count();
+  Storage_save_pulse_count(ses_reported_pulses);
   ses_payload_len = session_build_read_response(
       payload_ptr, payload_len, ses_payload_buf, sizeof(ses_payload_buf));
   if (ses_payload_len == 0) {
@@ -391,8 +413,20 @@ static void handle_write_request(const uint8_t *payload_ptr, uint16_t payload_le
 
 static void handle_ack(const uint8_t *p, uint16_t len) {
   (void)p; (void)len;
-  PulseCounter_reset();
-  Storage_save_pulse_count(0);
+  if (session.awaiting_register_ack) {
+    /* HES confirmation of the IP update: keep listening for the HANDSHAKE. */
+    session.awaiting_register_ack = false;
+    session.can_resend = false;
+    session.poll_start_tick_ms = HAL_GetTick();
+    delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
+    session.current_state = COM_SES_POLL_WAIT;
+    return;
+  }
+  /* Session confirmed: discount only what was reported in the READ_RESPONSE
+   * and persist the remainder (pulses counted after the report). */
+  PulseCounter_consume(ses_reported_pulses);
+  ses_reported_pulses = 0;
+  Storage_save_pulse_count(PulseCounter_get_count());
   session.failure_count = 0;
   session.current_state = COM_SES_DONE;
 }
@@ -425,7 +459,9 @@ static void session_dispatch_hes_msg(uint8_t msg_type, const uint8_t *payload_pt
  * Flow: UDP_CTX → FETCH_IPV6 → SEND_ANNOUNCE → [SESSION_START_DEBUG →]
  *       WAIT_SEND_OK → KEEPALIVE_WAIT (poll) → READ_HES_MSG →
  *       PROCESS_HES_MSG (dispatch by msg_type) → SEND response →
- *       back to KEEPALIVE_WAIT, until HES sends ACK → DONE.
+ *       back to KEEPALIVE_WAIT, until HES sends ACK → DONE. If no HES
+ *       message arrives within SESSION_LISTEN_WINDOW_MS the session also
+ *       ends in DONE, leaving the pulse count untouched.
  */
 void Com_session_process(void) {
   atcmd_desc_t cmd = (atcmd_desc_t)ATCMD_DESC_DEFAULT;
@@ -503,6 +539,10 @@ void Com_session_process(void) {
       }
       if (strcmp(ses_ipv6, last_announced_ipv6) == 0) {
         session.poll_start_tick_ms = HAL_GetTick();
+        if (!session.listening) {
+          session.listening = true;
+          session.last_activity_ms = HAL_GetTick();
+        }
         delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
         session.current_state = COM_SES_POLL_WAIT;
       } else {
@@ -545,6 +585,10 @@ void Com_session_process(void) {
       if (ATCore_get_response_status() == BG95_RESP_SEND_OK) {
         delay_stop(session.state_timeout_timer);
         session.poll_start_tick_ms = HAL_GetTick();
+        if (!session.listening) {
+          session.listening = true;
+          session.last_activity_ms = HAL_GetTick();
+        }
         delay_start(session.state_delay_timer, TIMEOUT_WAIT_RESPONSE);
         session.current_state = session.after_send_ok;
       } else {
@@ -554,6 +598,15 @@ void Com_session_process(void) {
 
     /* ---- Wait for HES message, then poll ---- */
     case COM_SES_POLL_WAIT: {
+      if (session.listening &&
+          (HAL_GetTick() - session.last_activity_ms) >= SESSION_LISTEN_WINDOW_MS) {
+        /* The HES did not make contact within the window: end the session
+         * without touching the pulse count (it is reported in the next one)
+         * so the main loop can power the modem off and sleep. */
+        delay_stop(session.state_delay_timer);
+        session.current_state = COM_SES_DONE;
+        break;
+      }
       if (delay_has_finished(session.state_delay_timer)) {
         session.current_state = COM_SES_CHECK_HES_DATA;
       }
@@ -615,6 +668,7 @@ void Com_session_process(void) {
       ATCore_set_data_mode();
       if (ATCore_process_response()) {
         delay_stop(session.state_timeout_timer);
+        session.last_activity_ms = HAL_GetTick();
         session.current_state = COM_SES_PROCESS_HES_MSG;
       } else {
         session_handle_failure();

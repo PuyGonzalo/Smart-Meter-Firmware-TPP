@@ -43,6 +43,13 @@ void PulseCounter_reset(void);
 void PulseCounter_set_count(uint32_t count);
 
 /**
+ * @brief  Subtract pulses already reported to (and confirmed by) the HES,
+ *         keeping any pulse counted after the report.
+ * @param  n  Pulse count included in the confirmed READ_RESPONSE.
+ */
+void PulseCounter_consume(uint32_t n);
+
+/**
  * @brief  Called from HAL_GPIO_EXTI_Callback when PULSE_INPUT_Pin triggers.
  *         Do NOT call this directly — it is invoked by the ISR path.
  */

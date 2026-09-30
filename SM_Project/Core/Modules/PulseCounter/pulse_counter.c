@@ -41,6 +41,15 @@ void PulseCounter_set_count(uint32_t count) {
   pulse_count = count;
 }
 
+void PulseCounter_consume(uint32_t n) {
+  /* Read-modify-write shared with the EXTI ISR: mask interrupts so a pulse
+   * arriving mid-update is not lost. */
+  uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  pulse_count = (pulse_count > n) ? (pulse_count - n) : 0U;
+  __set_PRIMASK(primask);
+}
+
 void PulseCounter_irq_handler(void) {
   uint32_t now = RTC_get_subsecond_ticks();
 
