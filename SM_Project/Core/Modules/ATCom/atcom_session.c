@@ -392,15 +392,7 @@ static void handle_read_request(const uint8_t *payload_ptr, uint16_t payload_len
 static void handle_write_request(const uint8_t *payload_ptr, uint16_t payload_len) {
   uint64_t next_wake = 0;
   bool got_wake = session_extract_next_wake(payload_ptr, payload_len, &next_wake);
-  if (got_wake) {
-    uint32_t now_hi, now_lo;
-    RTC_get_timestamp(&now_hi, &now_lo);
-    uint64_t now = ((uint64_t)now_hi << 32) | now_lo;
-    if (next_wake > now + COLD_START_OFFSET_SEC) {
-      uint64_t delta = next_wake - now - COLD_START_OFFSET_SEC;
-      if (delta < 86400ULL) atcom_set_pending_wake_seconds((uint32_t)delta);
-    }
-  }
+  if (got_wake) atcom_set_next_wake(next_wake);
   ses_payload_len = session_build_write_response(
       payload_ptr, payload_len, got_wake, ses_payload_buf, sizeof(ses_payload_buf));
   if (ses_payload_len == 0) {

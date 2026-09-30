@@ -8,6 +8,9 @@
  *   0x08080000 + 0x04: device_id (16 bytes)
  *   0x08080000 + 0x14: mac (16 bytes)
  *   0x08080000 + 0x24: pulse_count (4 bytes)
+ *   0x08080000 + 0x28: IMEI magic (4 bytes) - 0xC0FFEE42 if valid
+ *   0x08080000 + 0x2C: IMEI (16 bytes)
+ *   0x08080000 + 0x3C: next_wake, UNIX seconds (4 bytes)
  */
 
 #include "storage.h"
@@ -120,8 +123,9 @@ uint32_t Storage_load_pulse_count(void) {
 bool Storage_erase_all(void) {
   if (HAL_FLASHEx_DATAEEPROM_Unlock() != HAL_OK) return false;
 
-  /* Covers: magic(4) + device_id(16) + mac(16) + pulse(4) + imei_magic(4) + imei(16) = 0x3C bytes */
-  for (uint16_t i = 0; i < 0x3C; i++) {
+  /* Covers: magic(4) + device_id(16) + mac(16) + pulse(4) + imei_magic(4) + imei(16)
+     + next_wake(4) = 0x40 bytes */
+  for (uint16_t i = 0; i < 0x40; i++) {
     if (HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_BYTE,
                                         STORAGE_BASE_ADDR + i, 0xFF) != HAL_OK) {
       HAL_FLASHEx_DATAEEPROM_Lock();
@@ -164,4 +168,20 @@ bool Storage_load_imei(char *out, uint16_t cap) {
   memcpy(out, (const void *)STORAGE_IMEI_ADDR, STORAGE_IMEI_LEN);
   out[STORAGE_IMEI_LEN - 1] = '\0';
   return true;
+}
+
+/**
+ * @brief Save the next session time (UNIX seconds). Skips the write when the
+ *        value is already stored, to spare EEPROM cycles.
+ */
+bool Storage_save_next_wake(uint32_t unix_sec) {
+  if (*(__IO uint32_t *)STORAGE_WAKE_ADDR == unix_sec) return true;
+  return eeprom_write_word(STORAGE_WAKE_ADDR, unix_sec);
+}
+
+/**
+ * @brief Load the next session time, unvalidated (see storage.h).
+ */
+uint32_t Storage_load_next_wake(void) {
+  return *(__IO uint32_t *)STORAGE_WAKE_ADDR;
 }

@@ -95,6 +95,8 @@
 #define TIMEOUT_DRAIN_RETRY       500    /* inter-poll delay when QIRD returns 0 */
 
 /* Cross-module helpers implemented in ATCom.c */
-void atcom_set_pending_wake_seconds(uint32_t s);
+/* Validate the next_wake (UNIX s) sent by the HES, schedule it for the main
+ * loop and persist it in EEPROM. Unusable values are ignored. */
+void atcom_set_next_wake(uint64_t next_wake);
 
 #endif /* _ATCOM_INTERNAL_H_ */

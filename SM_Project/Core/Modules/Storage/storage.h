@@ -26,6 +26,7 @@
 #define STORAGE_PULSE_ADDR        (STORAGE_BASE_ADDR + 0x24)  /* 4 B */
 #define STORAGE_IMEI_MAGIC_ADDR   (STORAGE_BASE_ADDR + 0x28)  /* 4 B */
 #define STORAGE_IMEI_ADDR         (STORAGE_BASE_ADDR + 0x2C)  /* 16 B (15 chars + NUL) */
+#define STORAGE_WAKE_ADDR         (STORAGE_BASE_ADDR + 0x3C)  /* 4 B: next_wake (UNIX s) */
 
 #define STORAGE_MAGIC_VALUE       0xDEADBEEFUL
 #define STORAGE_IMEI_MAGIC_VALUE  0xC0FFEE42UL
@@ -109,6 +110,22 @@ bool     Storage_save_imei(const char *imei);
  * @retval false NULL/short buffer or no IMEI stored.
  */
 bool     Storage_load_imei(char *out, uint16_t cap);
+
+/**
+ * @brief Persist the absolute time of the next session agreed with the HES,
+ *        so that a reset does not make the device miss it.
+ * @param unix_sec Next wake-up as UNIX time (seconds).
+ * @retval true  Written successfully (or the value was already stored).
+ * @retval false EEPROM programming error.
+ */
+bool     Storage_save_next_wake(uint32_t unix_sec);
+
+/**
+ * @brief Load the next session time saved with Storage_save_next_wake().
+ * @return UNIX time in seconds, unvalidated: an erased word reads 0 and
+ *         Storage_erase_all() leaves 0xFFFFFFFF.
+ */
+uint32_t Storage_load_next_wake(void);
 
 /** @} */
 

@@ -39,6 +39,14 @@ void Com_Init(void);
  */
 uint32_t Com_pop_pending_wake_seconds(void);
 
+/**
+ * @brief Wake-up delay (seconds) until the next session saved in EEPROM, used
+ *        after a reset to keep the appointment with the HES.
+ * @return Delay in seconds (already minus the cold-start head start), or 0 if
+ *         there is no saved appointment still ahead within the next 24 h.
+ */
+uint32_t Com_saved_wake_seconds(void);
+
 /** @} */
 
 #endif /* _ATCOM_H_ */

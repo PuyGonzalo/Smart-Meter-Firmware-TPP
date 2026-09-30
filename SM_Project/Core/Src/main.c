@@ -335,8 +335,11 @@ int main(void)
   }
 
   /* If HES provided a wake-up time during registration, honor it before the
-   * first session: power off and sleep until the absolute moment HES asked. */
+   * first session: power off and sleep until the absolute moment HES asked.
+   * A registered device that rebooted recovers that moment from EEPROM, so a
+   * reset does not make it miss its appointment. */
   uint32_t initial_wake = Com_pop_pending_wake_seconds();
+  if (initial_wake == 0) initial_wake = Com_saved_wake_seconds();
   if (initial_wake > 0) {
     ATCore_power_off();
     LPM_sleep_seconds(initial_wake);

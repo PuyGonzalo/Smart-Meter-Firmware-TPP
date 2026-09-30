@@ -390,19 +390,10 @@ void Com_register_device_process(void) {
               break;
             }
 
-            /* Save delta (in seconds) for main loop to honor as next wake-up.
-             * Subtract COLD_START_OFFSET_SEC so the device wakes early enough
-             * to power on the BG95, attach, fetch IPv6 and send the announce
-             * before the agreed contact moment. */
-            uint32_t now_high, now_low;
-            RTC_get_timestamp(&now_high, &now_low);
-            uint64_t now = ((uint64_t)now_high << 32) | now_low;
-            if (next_wake_time > now + COLD_START_OFFSET_SEC) {
-              uint64_t delta = next_wake_time - now - COLD_START_OFFSET_SEC;
-              if (delta < 86400ULL) {
-                atcom_set_pending_wake_seconds((uint32_t)delta);
-              }
-            }
+            /* Schedule (and persist) the first appointment. The main loop
+             * wakes COLD_START_OFFSET_SEC early so the BG95 can power on,
+             * attach, fetch the IPv6 and send the announce in time. */
+            atcom_set_next_wake(next_wake_time);
           }
         }
 
